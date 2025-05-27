@@ -19,7 +19,8 @@ To run MapEX, you need **Python 3.7+** and the following dependencies:
 pip install pyqt5 numpy scikit-learn matplotlib scipy joblib
 ```
 
-if you use this kindly cite 
+Install the Program by 
+
 ```bash
 git clone https://github.com/divyadeepharbola/MapEX.git
 cd MapEX
@@ -30,3 +31,6 @@ install required dependencies by
 ```
 pip install -r requirements.txt
 ```
+
+
+Release executable soon !
