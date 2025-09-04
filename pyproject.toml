@@ -1,0 +1,37 @@
+[project]
+name = "MapEX"
+version = "1.0.4"
+description = "GUI toolkit for X-ray map analysis"
+requires-python = ">=3.9"
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+extend-select = [
+  "E",   # pycodestyle
+  "F",   # pyflakes
+  "I",   # import sorting
+  "N",   # pep8-naming (keep class checks; we ignore some subrules below)
+  "UP",  # pyupgrade
+]
+ignore = [
+  "E203",  # black-compatible slicing
+  "N803",  # arg name lowercase (skip for now)
+  "N806",  # var in function lowercase (skip for now)
+]
+
+# Ignore Qt-required camelCase method names only in these files
+[tool.ruff.lint.per-file-ignores]
+"visualization_step.py" = ["N802"]
+"preanalysis_step.py"   = ["N802"]
+"phase_mapping_step.py" = ["N802"]
+"calibration.py"        = ["N802"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mapex"]
+
+[tool.isort]
+profile = "black"
+known_first_party = ["mapex"]
