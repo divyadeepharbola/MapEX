@@ -34,8 +34,6 @@ pip install -r requirements.txt
 
 
 Release executable soon !
-<<<<<<< HEAD
-=======
 
 ## About
 
@@ -44,4 +42,3 @@ Release executable soon !
 ## License
 
 This project is licensed under the **MIT License** — see [LICENSE](./LICENSE) for details.
->>>>>>> caa8175 (MIT licence)
