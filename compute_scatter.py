@@ -1,20 +1,34 @@
-
 import sys
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QTextEdit, QGridLayout, QCheckBox, QFrame, QScrollArea, QTableWidget,
-    QTableWidgetItem, QComboBox, QMenu
+from matplotlib.backends.backend_qt5agg import (
+    FigureCanvasQTAgg as FigureCanvas,
 )
-from PyQt5.QtCore import Qt, QPoint
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-
-from sklearn.linear_model import LinearRegression, HuberRegressor, RANSACRegressor
-from scipy.stats import linregress
-from scipy.spatial import cKDTree
+from PyQt5.QtCore import QPoint
+from PyQt5.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+from sklearn.linear_model import (
+    HuberRegressor,
+    LinearRegression,
+    RANSACRegressor,
+)
 
 
 # ---------------------- LOG PANEL ----------------------
@@ -35,10 +49,11 @@ class LogPanel(QWidget):
 
 # ---------------------- PERIODIC TABLE ----------------------
 class PeriodicTablePanel(QWidget):
-    """
-    Clean, readable periodic table with simple group-based coloring.
+    """Clean, readable periodic table with simple group-based coloring.
+
     Clicking an element selects X = element, Y = "element (intensity)".
     """
+
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
@@ -50,15 +65,184 @@ class PeriodicTablePanel(QWidget):
 
         # Layout matrix (strings or "" for blanks)
         self.matrix = [
-            ["H", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "He"],
-            ["Li", "Be", "", "", "", "", "", "", "", "", "", "", "B", "C", "N", "O", "F", "Ne"],
-            ["Na", "Mg", "", "", "", "", "", "", "", "", "", "", "Al", "Si", "P", "S", "Cl", "Ar"],
-            ["K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr"],
-            ["Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe"],
-            ["Cs", "Ba", "La", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn"],
-            ["Fr", "Ra", "Ac", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og"],
-            ["", "", "", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu"],
-            ["", "", "", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr"]
+            [
+                "H",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "He",
+            ],
+            [
+                "Li",
+                "Be",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "B",
+                "C",
+                "N",
+                "O",
+                "F",
+                "Ne",
+            ],
+            [
+                "Na",
+                "Mg",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "Al",
+                "Si",
+                "P",
+                "S",
+                "Cl",
+                "Ar",
+            ],
+            [
+                "K",
+                "Ca",
+                "Sc",
+                "Ti",
+                "V",
+                "Cr",
+                "Mn",
+                "Fe",
+                "Co",
+                "Ni",
+                "Cu",
+                "Zn",
+                "Ga",
+                "Ge",
+                "As",
+                "Se",
+                "Br",
+                "Kr",
+            ],
+            [
+                "Rb",
+                "Sr",
+                "Y",
+                "Zr",
+                "Nb",
+                "Mo",
+                "Tc",
+                "Ru",
+                "Rh",
+                "Pd",
+                "Ag",
+                "Cd",
+                "In",
+                "Sn",
+                "Sb",
+                "Te",
+                "I",
+                "Xe",
+            ],
+            [
+                "Cs",
+                "Ba",
+                "La",
+                "Hf",
+                "Ta",
+                "W",
+                "Re",
+                "Os",
+                "Ir",
+                "Pt",
+                "Au",
+                "Hg",
+                "Tl",
+                "Pb",
+                "Bi",
+                "Po",
+                "At",
+                "Rn",
+            ],
+            [
+                "Fr",
+                "Ra",
+                "Ac",
+                "Rf",
+                "Db",
+                "Sg",
+                "Bh",
+                "Hs",
+                "Mt",
+                "Ds",
+                "Rg",
+                "Cn",
+                "Nh",
+                "Fl",
+                "Mc",
+                "Lv",
+                "Ts",
+                "Og",
+            ],
+            [
+                "",
+                "",
+                "",
+                "Ce",
+                "Pr",
+                "Nd",
+                "Pm",
+                "Sm",
+                "Eu",
+                "Gd",
+                "Tb",
+                "Dy",
+                "Ho",
+                "Er",
+                "Tm",
+                "Yb",
+                "Lu",
+            ],
+            [
+                "",
+                "",
+                "",
+                "Th",
+                "Pa",
+                "U",
+                "Np",
+                "Pu",
+                "Am",
+                "Cm",
+                "Bk",
+                "Cf",
+                "Es",
+                "Fm",
+                "Md",
+                "No",
+                "Lr",
+            ],
         ]
 
         # Simple group palette
@@ -76,11 +260,26 @@ class PeriodicTablePanel(QWidget):
         # quick membership by symbol
         self.group = {
             # rough mapping
-            **{s: "alkali" for s in ["Li","Na","K","Rb","Cs","Fr"]},
-            **{s: "alkaline" for s in ["Be","Mg","Ca","Sr","Ba","Ra"]},
-            **{s: "noble" for s in ["He","Ne","Ar","Kr","Xe","Rn","Og"]},
-            **{s: "nonmetal" for s in ["H","C","N","O","F","P","S","Cl","Se","Br","I"]},
-            **{s: "metalloid" for s in ["B","Si","Ge","As","Sb","Te"]},
+            **{s: "alkali" for s in ["Li", "Na", "K", "Rb", "Cs", "Fr"]},
+            **{s: "alkaline" for s in ["Be", "Mg", "Ca", "Sr", "Ba", "Ra"]},
+            **{s: "noble" for s in ["He", "Ne", "Ar", "Kr", "Xe", "Rn", "Og"]},
+            **{
+                s: "nonmetal"
+                for s in [
+                    "H",
+                    "C",
+                    "N",
+                    "O",
+                    "F",
+                    "P",
+                    "S",
+                    "Cl",
+                    "Se",
+                    "Br",
+                    "I",
+                ]
+            },
+            **{s: "metalloid" for s in ["B", "Si", "Ge", "As", "Sb", "Te"]},
         }
         # fallback: transition/post/lan_act based on row/col
         self.buttons = {}
@@ -153,7 +352,11 @@ class DataTablePanel(QWidget):
         self.table_widget.setHorizontalHeaderLabels(data.columns.astype(str).tolist())
         for row_idx, row_data in data.iterrows():
             for col_idx, value in enumerate(row_data):
-                self.table_widget.setItem(row_idx, col_idx, QTableWidgetItem("" if pd.isna(value) else str(value)))
+                self.table_widget.setItem(
+                    row_idx,
+                    col_idx,
+                    QTableWidgetItem("" if pd.isna(value) else str(value)),
+                )
 
 
 # ---------------------- CHECKBOX/REGRESSION PANEL ----------------------
@@ -187,7 +390,14 @@ class CheckboxPanel(QWidget):
         right.addWidget(self.regression_label)
 
         self.regression_dropdown = QComboBox()
-        self.regression_dropdown.addItems(["Linear (OLS)", "Linear (Huber)", "Linear (RANSAC)", "Quadratic (OLS)"])
+        self.regression_dropdown.addItems(
+            [
+                "Linear (OLS)",
+                "Linear (Huber)",
+                "Linear (RANSAC)",
+                "Quadratic (OLS)",
+            ]
+        )
         self.regression_dropdown.currentIndexChanged.connect(self._update_regression)
         right.addWidget(self.regression_dropdown)
 
@@ -206,7 +416,9 @@ class CheckboxPanel(QWidget):
         # layout
         self.main = QHBoxLayout(self)
         self.main.addLayout(left, 1)
-        sep = QFrame(); sep.setFrameShape(QFrame.VLine); sep.setFrameShadow(QFrame.Sunken)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.VLine)
+        sep.setFrameShadow(QFrame.Sunken)
         self.main.addWidget(sep)
         self.main.addLayout(right, 1)
 
@@ -247,20 +459,26 @@ class ScatterPlotPanel(QWidget):
         layout.addWidget(self.canvas)
 
         # hover annotation
-        self.annot = self.ax.annotate("", xy=(0, 0), xytext=(10, 10),
-                                      textcoords="offset points",
-                                      bbox=dict(boxstyle="round", fc="w", ec="#333"),
-                                      arrowprops=dict(arrowstyle="->", color="#333"))
+        self.annot = self.ax.annotate(
+            "",
+            xy=(0, 0),
+            xytext=(10, 10),
+            textcoords="offset points",
+            bbox=dict(boxstyle="round", fc="w", ec="#333"),
+            arrowprops=dict(arrowstyle="->", color="#333"),
+        )
         self.annot.set_visible(False)
 
-        self._last_hover_idx = None  # index within self.data (masked/included order)
+        # index within self.data (masked/included order)
+        self._last_hover_idx = None
         self._hover_marker = None
 
-        cid1 = self.canvas.mpl_connect("motion_notify_event", self.on_motion)
-        cid2 = self.canvas.mpl_connect("button_press_event", self.on_button)
+        self.canvas.mpl_connect("motion_notify_event", self.on_motion)
+        self.canvas.mpl_connect("button_press_event", self.on_button)
 
     def _data_to_pixel_distance(self, x, y, mx, my):
-        """Return pixel distance between (x,y) and mouse (mx,my) using transform."""
+        """Return pixel distance between (x,y) and mouse (mx,my) using
+        transform."""
         xy_disp = self.ax.transData.transform(np.column_stack([x, y]))
         m_disp = self.ax.transData.transform(np.array([[mx, my]]))[0]
         d = np.sqrt(((xy_disp - m_disp) ** 2).sum(axis=1))
@@ -282,7 +500,7 @@ class ScatterPlotPanel(QWidget):
         # threshold ~8 px
         if d[idx] <= 8:
             self._last_hover_idx = idx
-            label = ("Excluded" if std[idx] in self.parent.excluded_standards else "Included")
+            label = "Excluded" if std[idx] in self.parent.excluded_standards else "Included"
             txt = f"Std: {std[idx]} ({label})\\nX={x[idx]:.4g}, Y={y[idx]:.4g}"
             self.annot.set_visible(True)
             self.annot.xy = (x[idx], y[idx])
@@ -294,7 +512,14 @@ class ScatterPlotPanel(QWidget):
             if self._hover_marker:
                 self._hover_marker.remove()
                 self._hover_marker = None
-            self._hover_marker = self.ax.plot([x[idx]], [y[idx]], marker='o', markersize=9, mfc='none', mec='#222')[0]
+            self._hover_marker = self.ax.plot(
+                [x[idx]],
+                [y[idx]],
+                marker="o",
+                markersize=9,
+                mfc="none",
+                mec="#222",
+            )[0]
             self.canvas.draw_idle()
         else:
             self._last_hover_idx = None
@@ -329,14 +554,23 @@ class ScatterPlotPanel(QWidget):
         self.ax.clear()
 
         if len(included_df):
-            self.ax.scatter(included_df[self.parent.selected_x], included_df[self.parent.selected_y],
-                            label="Included", alpha=0.9)
+            self.ax.scatter(
+                included_df[self.parent.selected_x],
+                included_df[self.parent.selected_y],
+                label="Included",
+                alpha=0.9,
+            )
         if len(excluded_df):
-            self.ax.scatter(excluded_df[self.parent.selected_x], excluded_df[self.parent.selected_y],
-                            label="Excluded", marker='x', alpha=0.8)
+            self.ax.scatter(
+                excluded_df[self.parent.selected_x],
+                excluded_df[self.parent.selected_y],
+                label="Excluded",
+                marker="x",
+                alpha=0.8,
+            )
 
         if x_fit is not None and y_fit is not None:
-            self.ax.plot(x_fit, y_fit, linestyle='--', label="Fit")
+            self.ax.plot(x_fit, y_fit, linestyle="--", label="Fit")
 
         self.ax.set_xlabel(self.parent.selected_x)
         self.ax.set_ylabel(self.parent.selected_y)
@@ -385,7 +619,8 @@ class ComputeScatter(QWidget):
         grid.addWidget(self.scatter_panel, 0, 1)
         grid.addWidget(self.checkbox_panel, 1, 1)
 
-        right_container = QWidget(); right_container.setLayout(grid)
+        right_container = QWidget()
+        right_container.setLayout(grid)
         main.addWidget(right_container, 3)
 
         # auto-load
@@ -401,7 +636,7 @@ class ComputeScatter(QWidget):
         self.plot_scatter()
 
     def exclude_all_points(self):
-        if self.data is None: 
+        if self.data is None:
             return
         self.excluded_standards = set(self.data["Standard Number"].astype(str).tolist())
         self.log("Excluded all points.")
@@ -448,7 +683,8 @@ class ComputeScatter(QWidget):
 
     # ---------------- plotting & regression ----------------
     def _prepare_xy(self):
-        """Return filtered dataframe with finite x,y and within checked rows."""
+        """Return filtered dataframe with finite x,y and within checked
+        rows."""
         if self.data is None or not self.selected_x or not self.selected_y:
             return None
 
@@ -467,7 +703,8 @@ class ComputeScatter(QWidget):
         return df
 
     def _fit_regression(self, df_included):
-        """Fit based on self.regression_type; return x_fit, y_fit, eq_text, stats_text"""
+        """Fit based on self.regression_type; return x_fit, y_fit,
+        eq_text, stats_text."""
         x = df_included[self.selected_x].values
         y = df_included[self.selected_y].values
 
@@ -562,7 +799,12 @@ class ComputeScatter(QWidget):
         if len(df_included) >= 2:
             x_fit, y_fit, eq_text, stats_text = self._fit_regression(df_included)
         else:
-            x_fit, y_fit, eq_text, stats_text = (None, None, "—", "Not enough included points")
+            x_fit, y_fit, eq_text, stats_text = (
+                None,
+                None,
+                "—",
+                "Not enough included points",
+            )
 
         # store for hover (use entire df to allow hover over excluded too)
         self.scatter_panel.data = df.copy()

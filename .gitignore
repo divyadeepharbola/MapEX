@@ -1,4 +1,15 @@
-﻿# Python
+﻿#OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.AppleDouble
+.LSOverride
+~$*
+*.tmp
+
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -17,11 +28,15 @@ venv/
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
-.ipynb_checkpoints/
 
-# OS
-.DS_Store
-Thumbs.db
+# Jupyter
+.ipynb_checkpoints/
+.jupyter/
 
 # Logs
 *.log
+
+# (Intentionally NOT ignoring data/)
+# Track environment files
+#! environment.yml
+#! requirements.txt

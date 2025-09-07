@@ -1,27 +1,157 @@
-import sys
 import os
-from PyQt5.QtWidgets import QApplication, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QWidget, QFileDialog, QTextEdit, QMessageBox, QTableWidget, QTableWidgetItem, QStackedWidget,QGridLayout, QCheckBox
-from PyQt5.QtGui import QPixmap, QPalette, QColor
-from PyQt5.QtCore import Qt, QProcess
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-import numpy as np
 import re
+import sys
+
 import cv2
-from PyQt5.QtWidgets import QApplication, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QFileDialog
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from PIL import Image
-from functools import partial
+import matplotlib
 import matplotlib.patches as patches
+import matplotlib.pyplot as plt
+import numpy as np
 import openpyxl
+import pandas as pd
+from matplotlib.backends.backend_qt5agg import (
+    FigureCanvasQTAgg as FigureCanvas,
+)
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor, QPalette
+from PyQt5.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QFileDialog,
+    QGridLayout,
+    QHBoxLayout,
+    QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from compute_scatter import ComputeScatter
 
 # --- helper to guess element symbol from a filename ---
-_ELEMENT_SYMBOLS = {"H","He","Li","Be","B","C","N","O","F","Ne","Na","Mg","Al","Si","P","S","Cl","Ar",
-"K","Ca","Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga","Ge","As","Se","Br","Kr","Rb","Sr","Y",
-"Zr","Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Sb","Te","I","Xe","Cs","Ba","La","Ce","Pr","Nd",
-"Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb","Lu","Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg","Tl",
-"Pb","Bi","Po","At","Rn","Fr","Ra","Ac","Th","Pa","U","Np","Pu","Am","Cm","Bk","Cf","Es","Fm","Md","No",
-"Lr","Rf","Db","Sg","Bh","Hs","Mt","Ds","Rg","Cn","Fl","Lv","Ts","Og"}
+_ELEMENT_SYMBOLS = {
+    "H",
+    "He",
+    "Li",
+    "Be",
+    "B",
+    "C",
+    "N",
+    "O",
+    "F",
+    "Ne",
+    "Na",
+    "Mg",
+    "Al",
+    "Si",
+    "P",
+    "S",
+    "Cl",
+    "Ar",
+    "K",
+    "Ca",
+    "Sc",
+    "Ti",
+    "V",
+    "Cr",
+    "Mn",
+    "Fe",
+    "Co",
+    "Ni",
+    "Cu",
+    "Zn",
+    "Ga",
+    "Ge",
+    "As",
+    "Se",
+    "Br",
+    "Kr",
+    "Rb",
+    "Sr",
+    "Y",
+    "Zr",
+    "Nb",
+    "Mo",
+    "Tc",
+    "Ru",
+    "Rh",
+    "Pd",
+    "Ag",
+    "Cd",
+    "In",
+    "Sn",
+    "Sb",
+    "Te",
+    "I",
+    "Xe",
+    "Cs",
+    "Ba",
+    "La",
+    "Ce",
+    "Pr",
+    "Nd",
+    "Pm",
+    "Sm",
+    "Eu",
+    "Gd",
+    "Tb",
+    "Dy",
+    "Ho",
+    "Er",
+    "Tm",
+    "Yb",
+    "Lu",
+    "Hf",
+    "Ta",
+    "W",
+    "Re",
+    "Os",
+    "Ir",
+    "Pt",
+    "Au",
+    "Hg",
+    "Tl",
+    "Pb",
+    "Bi",
+    "Po",
+    "At",
+    "Rn",
+    "Fr",
+    "Ra",
+    "Ac",
+    "Th",
+    "Pa",
+    "U",
+    "Np",
+    "Pu",
+    "Am",
+    "Cm",
+    "Bk",
+    "Cf",
+    "Es",
+    "Fm",
+    "Md",
+    "No",
+    "Lr",
+    "Rf",
+    "Db",
+    "Sg",
+    "Bh",
+    "Hs",
+    "Mt",
+    "Ds",
+    "Rg",
+    "Cn",
+    "Fl",
+    "Lv",
+    "Ts",
+    "Og",
+}
+
 
 def _guess_element_symbol_from_name(name: str):
     base = os.path.splitext(os.path.basename(name))[0]
@@ -30,32 +160,33 @@ def _guess_element_symbol_from_name(name: str):
     # scan for any symbol present as a standalone token or embedded
     # prefer longer symbols first (He vs H)
     for sym in sorted(_ELEMENT_SYMBOLS, key=len, reverse=True):
-        if sym.lower() in low.split('_'):
+        if sym.lower() in low.split("_"):
             return sym
         if sym.lower() in low:
             return sym
     return None
-import matplotlib
-matplotlib.use('Qt5Agg')
-from compute_scatter import ComputeScatter
-import pandas as pd
+
+
+matplotlib.use("Qt5Agg")
+
 
 class CustomTableWidget(QTableWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
     def keyPressEvent(self, event):
-        """ Delete selected row(s) when 'Delete' key is pressed """
+        """Delete selected row(s) when 'Delete' key is pressed."""
         if event.key() == Qt.Key_Delete:
             self.delete_selected_rows()
         else:
             super().keyPressEvent(event)  # Handle other key events normally
 
     def delete_selected_rows(self):
-        """ Deletes the selected row(s) from the table """
+        """Deletes the selected row(s) from the table."""
         selected_rows = set(item.row() for item in self.selectedItems())  # Get selected row indices
         for row in sorted(selected_rows, reverse=True):  # Delete rows in reverse order
             self.removeRow(row)
+
 
 class ImageTextViewer(QWidget):
     def __init__(self, table_widget):  # Pass the table widget
@@ -63,7 +194,7 @@ class ImageTextViewer(QWidget):
         self.table_widget = table_widget  # Store the reference
         self.text_files = []
         # self.histogram = Histogram  # Store reference
-        
+
         self.canvas = FigureCanvas(plt.figure(figsize=(5, 5)))
         # self.histogram = Histogram()  # Create histogram instance
         self.load_image_button = QPushButton("Load Image")
@@ -72,7 +203,8 @@ class ImageTextViewer(QWidget):
         self.right_button = QPushButton("\u2192")
         self.add_standard_button = QPushButton("Add as Standard")
         self.reset_zoom_button = QPushButton("Reset Zoom")
-        # self.status_label = QLabel("Select an ROI to zoom in.")  # Added status label
+        # self.status_label = QLabel("Select an ROI to zoom in.")  # Added
+        # status label
         self.left_button.setEnabled(False)
         self.right_button.setEnabled(False)
 
@@ -91,7 +223,7 @@ class ImageTextViewer(QWidget):
         self.end_point = None  # Mouse release end point
         self.rect = None  # Rectangle patch for visualization
         self.standard_count = 0  # Counter for standard numbers
-        
+
         layout = QVBoxLayout()
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.load_image_button)
@@ -99,7 +231,7 @@ class ImageTextViewer(QWidget):
         layout.addLayout(button_layout)
 
         layout.addWidget(self.canvas)
-        
+
         nav_layout = QHBoxLayout()
         nav_layout.addWidget(self.left_button)
         nav_layout.addWidget(self.right_button)
@@ -114,7 +246,7 @@ class ImageTextViewer(QWidget):
         self.canvas.mpl_connect("button_press_event", self.on_press)
         self.canvas.mpl_connect("button_release_event", self.on_release)
         self.canvas.mpl_connect("motion_notify_event", self.on_motion)
-    
+
     def clear_roi(self):
         if self.image is None:
             return
@@ -142,7 +274,14 @@ class ImageTextViewer(QWidget):
             ax = self.canvas.figure.add_subplot(111)
             self.plot_image_and_text(ax)
 
-            self.rect = patches.Rectangle((x_min, y_min), width, height, linewidth=1, edgecolor='r', facecolor='none')
+            self.rect = patches.Rectangle(
+                (x_min, y_min),
+                width,
+                height,
+                linewidth=1,
+                edgecolor="r",
+                facecolor="none",
+            )
             ax.add_patch(self.rect)
             self.canvas.draw()
 
@@ -165,17 +304,23 @@ class ImageTextViewer(QWidget):
             self.canvas.figure.clear()
             ax = self.canvas.figure.add_subplot(111)
             self.plot_image_and_text(ax)
-            
-            self.rect = patches.Rectangle((self.roi[0], self.roi[1]), self.roi[2], self.roi[3], 
-                                        linewidth=1, edgecolor='r', facecolor='none')
+
+            self.rect = patches.Rectangle(
+                (self.roi[0], self.roi[1]),
+                self.roi[2],
+                self.roi[3],
+                linewidth=1,
+                edgecolor="r",
+                facecolor="none",
+            )
             ax.add_patch(self.rect)
             self.canvas.draw()
-
 
     def reset_zoom(self):
         self.roi = None
         self.reset_zoom_button.setEnabled(False)
-        # self.status_label.setText("Zoom reset. Select a new ROI.")  # Update status label
+        # self.status_label.setText("Zoom reset. Select a new ROI.")  # Update
+        # status label
         self.plot_image_and_text()
 
     def add_standard(self):
@@ -202,7 +347,12 @@ class ImageTextViewer(QWidget):
             self.table_widget.setItem(row_position, coordinate_col, QTableWidgetItem(str(self.roi)))
 
     def load_image(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open Image File", "", "Images (*.png *.jpg *.bmp *.jpeg *.gif *.tiff *.tif)")
+        file_name, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Image File",
+            "",
+            "Images (*.png *.jpg *.bmp *.jpeg *.gif *.tiff *.tif)",
+        )
         if file_name:
             self.image, _ = self.load_data(file_name)  # Load color image
             self.original_image = self.image.copy()  # Store original full image
@@ -242,8 +392,12 @@ class ImageTextViewer(QWidget):
         if self.current_index == -1 and self.image is not None:
             image_to_plot = self.image
             if target_shape and self.image.shape[:2] != target_shape:
-                image_to_plot = cv2.resize(self.image, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_LINEAR)
-            
+                image_to_plot = cv2.resize(
+                    self.image,
+                    (target_shape[1], target_shape[0]),
+                    interpolation=cv2.INTER_LINEAR,
+                )
+
             if self.roi:
                 x, y, w, h = self.roi
                 # Ensure cropping is within bounds
@@ -251,15 +405,16 @@ class ImageTextViewer(QWidget):
                     self.status_label.setText("ROI out of bounds. Resetting zoom.")
                     self.roi = None
                 else:
-                    image_to_plot = image_to_plot[y:y+h, x:x+w]  # Crop ROI
-                
+                    # Crop ROI
+                    image_to_plot = image_to_plot[y : y + h, x : x + w]
+
             ax.imshow(image_to_plot)
             title = "Image: " + self.image_path.split("/")[-1]
 
         elif self.text_files and self.current_index >= 0:
             if text_data is not None:
                 # Step 1: Store vmin and vmax only once (before zooming)
-                if not hasattr(self, 'fixed_vmin'):
+                if not hasattr(self, "fixed_vmin"):
                     self.fixed_vmin = text_data.min()
                     self.fixed_vmax = text_data.max()
 
@@ -269,11 +424,18 @@ class ImageTextViewer(QWidget):
                         self.status_label.setText("ROI out of bounds. Resetting zoom.")
                         self.roi = None
                     else:
-                        # Step 2: Crop the ROI but keep the original vmin and vmax
-                        text_data = text_data[y:y+h, x:x+w]
+                        # Step 2: Crop the ROI but keep the original vmin and
+                        # vmax
+                        text_data = text_data[y : y + h, x : x + w]
 
                 # 🔹 Step 3: Apply fixed vmin and vmax to ensure consistent colors
-                ax.imshow(text_data, cmap="viridis", vmin=self.fixed_vmin, vmax=self.fixed_vmax, alpha=1)
+                ax.imshow(
+                    text_data,
+                    cmap="viridis",
+                    vmin=self.fixed_vmin,
+                    vmax=self.fixed_vmax,
+                    alpha=1,
+                )
                 title = "Text Data: " + self.text_files[self.current_index].split("/")[-1]
         ax.set_title(title, fontsize=10)
         ax.axis("off")
@@ -284,10 +446,18 @@ class ImageTextViewer(QWidget):
             return
 
         image_with_rois = self.image.copy()
-        
+
         for x, y, w, h, label in roi_list:
             cv2.rectangle(image_with_rois, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.putText(image_with_rois, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(
+                image_with_rois,
+                label,
+                (x, y - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                2,
+            )
 
         self.image = image_with_rois  # Update displayed image
         self.plot_image_and_text()  # Refresh plot
@@ -319,38 +489,55 @@ class ImageTextViewer(QWidget):
 
     def load_data(self, file_path):
         try:
-            file_extension = file_path.split('.')[-1].lower()
-            if file_extension in ['txt', 'csv']:
+            file_extension = file_path.split(".")[-1].lower()
+            if file_extension in ["txt", "csv"]:
                 start_reading = False
                 data = []
-                with open(file_path, 'r', encoding='utf-8') as file:
+                with open(file_path, encoding="utf-8") as file:
                     for line in file:
                         if not start_reading:
-                            # Check for 5+ continuous numbers separated by `;`, `,`, ` `, or `\t`
-                            if re.search(r'(\d+(\.\d+)?[\s,;,\t]+){5,6}\d+(\.\d+)?', line):
+                            # Check for 5+ continuous numbers separated by `;`,
+                            # `,`, ` `, or `\t`
+                            if re.search(
+                                r"(\d+(\.\d+)?[\s,;,\t]+){5,6}\d+(\.\d+)?",
+                                line,
+                            ):
                                 start_reading = True
-                                row = list(map(float, re.split(r'[;\s,]+', line.strip())))
+                                row = list(
+                                    map(
+                                        float,
+                                        re.split(r"[;\s,]+", line.strip()),
+                                    )
+                                )
                                 data.append(row)
                             continue
                         try:
-                            row = list(map(float, re.split(r'[;\s,]+', line.strip())))
+                            row = list(map(float, re.split(r"[;\s,]+", line.strip())))
                             data.append(row)
                         except ValueError:
                             continue  # Skip non-numeric lines
                 if data:
-                    return np.array(data), 'text'
+                    return np.array(data), "text"
                 else:
                     self.log_message(f"No valid data found in {file_path}")
-                    return None, 'text'
-            elif file_extension in ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tiff']:
+                    return None, "text"
+            elif file_extension in [
+                "png",
+                "jpg",
+                "jpeg",
+                "bmp",
+                "gif",
+                "tiff",
+            ]:
                 image = cv2.imread(file_path)  # Load image (BGR format)
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert to RGB
-                return image, 'image'
+                return image, "image"
             else:
                 return None, None
         except FileNotFoundError:
             self.log_message(f"File not found: {file_path}")
             return None, None
+
 
 class PeriodicTable(QWidget):
     def __init__(self, table_widget, scatter_plot, log_function):
@@ -382,13 +569,11 @@ class PeriodicTable(QWidget):
             self.add_element_column(symbol)
             self.log_message(f"{symbol} selected")  # Log selection
 
-    
     def update_scatter_plot(self, element):
         """Update scatter plot with the selected element's data."""
         if self.scatter_plot:
             self.log_message(f"Updating scatter plot for: {element}")  # Debugging
             self.scatter_plot.set_selected_element(element)
-
 
     def add_element_column(self, symbol):
         column_count = self.table_widget.columnCount()
@@ -403,17 +588,186 @@ class PeriodicTable(QWidget):
 
     def create_periodic_table(self):
         elements = [
-            ["H", "", "", "", "", "", "", "", "", "", "", "","", "", "", "", "", "He"],
-            ["Li", "Be", "", "", "", "", "", "", "", "", "","", "B", "C", "N", "O", "F", "Ne"],
-            ["Na", "Mg", "", "", "", "", "", "", "", "","", "", "Al", "Si", "P", "S", "Cl", "Ar"],
-            ["K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr"],
-            ["Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe"],
-            ["Cs", "Ba", "La", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn"],
-            ["Fr", "Ra", "Ac", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og"],
-            ["", "", "", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu"],
-            ["", "", "", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr"]
+            [
+                "H",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "He",
+            ],
+            [
+                "Li",
+                "Be",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "B",
+                "C",
+                "N",
+                "O",
+                "F",
+                "Ne",
+            ],
+            [
+                "Na",
+                "Mg",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "Al",
+                "Si",
+                "P",
+                "S",
+                "Cl",
+                "Ar",
+            ],
+            [
+                "K",
+                "Ca",
+                "Sc",
+                "Ti",
+                "V",
+                "Cr",
+                "Mn",
+                "Fe",
+                "Co",
+                "Ni",
+                "Cu",
+                "Zn",
+                "Ga",
+                "Ge",
+                "As",
+                "Se",
+                "Br",
+                "Kr",
+            ],
+            [
+                "Rb",
+                "Sr",
+                "Y",
+                "Zr",
+                "Nb",
+                "Mo",
+                "Tc",
+                "Ru",
+                "Rh",
+                "Pd",
+                "Ag",
+                "Cd",
+                "In",
+                "Sn",
+                "Sb",
+                "Te",
+                "I",
+                "Xe",
+            ],
+            [
+                "Cs",
+                "Ba",
+                "La",
+                "Hf",
+                "Ta",
+                "W",
+                "Re",
+                "Os",
+                "Ir",
+                "Pt",
+                "Au",
+                "Hg",
+                "Tl",
+                "Pb",
+                "Bi",
+                "Po",
+                "At",
+                "Rn",
+            ],
+            [
+                "Fr",
+                "Ra",
+                "Ac",
+                "Rf",
+                "Db",
+                "Sg",
+                "Bh",
+                "Hs",
+                "Mt",
+                "Ds",
+                "Rg",
+                "Cn",
+                "Nh",
+                "Fl",
+                "Mc",
+                "Lv",
+                "Ts",
+                "Og",
+            ],
+            [
+                "",
+                "",
+                "",
+                "Ce",
+                "Pr",
+                "Nd",
+                "Pm",
+                "Sm",
+                "Eu",
+                "Gd",
+                "Tb",
+                "Dy",
+                "Ho",
+                "Er",
+                "Tm",
+                "Yb",
+                "Lu",
+            ],
+            [
+                "",
+                "",
+                "",
+                "Th",
+                "Pa",
+                "U",
+                "Np",
+                "Pu",
+                "Am",
+                "Cm",
+                "Bk",
+                "Cf",
+                "Es",
+                "Fm",
+                "Md",
+                "No",
+                "Lr",
+            ],
         ]
-        
+
         grid_layout = QGridLayout()
         grid_layout.setSpacing(0)
         grid_layout.setContentsMargins(10, 10, 10, 10)
@@ -469,13 +823,13 @@ class ScatterPlot(FigureCanvas):
     def update_plot(self, selected_elements):
         self.selected_elements = selected_elements
         self.ax.clear()
-        
+
         checked_standards = []
         for row in range(self.standard_table.rowCount()):
             checkbox = self.standard_table.cellWidget(row, 1)
             if checkbox and checkbox.isChecked():
                 checked_standards.append(self.standard_table.item(row, 0).text())
-        
+
         for element in self.selected_elements:
             x_data, y_data = [], []
             col_index = self.get_element_column_index(element)
@@ -490,7 +844,7 @@ class ScatterPlot(FigureCanvas):
                         continue
             if x_data and y_data:
                 self.ax.scatter(x_data, y_data, label=element)
-        
+
         self.ax.legend()
         self.draw()
 
@@ -505,13 +859,14 @@ class ScatterPlot(FigureCanvas):
                 return col
         self.log_message(f"❌ Column for {element} not found.")
         return None
-    
+
+
 class CalibrationGUI(QWidget):
     def __init__(self):
         super().__init__()
         self.roi = None  # Initialize ROI as None
         # self.compute_panel = None  # Initialize ComputePanel as None
-        self.scatter_plot = None  
+        self.scatter_plot = None
         self.init_ui()
 
     def init_ui(self):
@@ -555,8 +910,12 @@ class CalibrationGUI(QWidget):
         for row in range(5):
             self.standard_table.setItem(row, 0, QTableWidgetItem(f"Standard {row+1}"))
             self.standard_table.setCellWidget(row, 1, QCheckBox())
-        self.scatter_plot = ScatterPlot(self.table_widget,self.standard_table)
-        self.periodic_table = PeriodicTable(self.table_widget, None, getattr(self, "log_message", lambda msg: None))
+        self.scatter_plot = ScatterPlot(self.table_widget, self.standard_table)
+        self.periodic_table = PeriodicTable(
+            self.table_widget,
+            None,
+            getattr(self, "log_message", lambda msg: None),
+        )
         left_right_layout.addWidget(self.image_viewer)
         left_right_layout.addWidget(self.periodic_table)
 
@@ -609,7 +968,7 @@ class CalibrationGUI(QWidget):
         self.setLayout(main_stack_layout)
 
     def custom_sort(self, column):
-        """ Implements three-state sorting for the selected column. """
+        """Implements three-state sorting for the selected column."""
         if column not in self.sort_states:
             self.sort_states[column] = 0  # Initialize sorting state
 
@@ -627,9 +986,10 @@ class CalibrationGUI(QWidget):
             self.restore_original_order()  # Restore original row order
 
     def restore_original_order(self):
-        """ Restores the original row order in the table. """
+        """Restores the original row order in the table."""
         for i in range(self.table_widget.rowCount()):
-            self.table_widget.setRowHidden(i, False)  # Ensure all rows are visible
+            # Ensure all rows are visible
+            self.table_widget.setRowHidden(i, False)
 
     def remove_standard_roi(self):
         if not hasattr(self.image_viewer, "image") or self.image_viewer.image is None:
@@ -645,7 +1005,7 @@ class CalibrationGUI(QWidget):
             return
 
         roi_list = []  # Store all ROIs to draw
-        
+
         for row in range(self.table_widget.rowCount()):
             standard_number_item = self.table_widget.item(row, 0)
             coordinate_item = self.table_widget.item(row, 1)
@@ -653,12 +1013,17 @@ class CalibrationGUI(QWidget):
             if standard_number_item and coordinate_item:
                 standard_number = standard_number_item.text()
                 coordinates_text = coordinate_item.text().strip("()")  # Remove brackets
-                
+
                 try:
                     x, y, w, h = map(int, coordinates_text.split(","))
-                    roi_list.append((x, y, w, h, standard_number))  # Store ROI + label
+                    # Store ROI + label
+                    roi_list.append((x, y, w, h, standard_number))
                 except ValueError:
-                    QMessageBox.warning(self, "Warning", f"Invalid coordinates format in row {row+1}: {coordinates_text}")
+                    QMessageBox.warning(
+                        self,
+                        "Warning",
+                        f"Invalid coordinates format in row {row+1}: {coordinates_text}",
+                    )
 
         if roi_list:
             self.image_viewer.draw_rois(roi_list)  # Draw ROI(s) on image
@@ -666,12 +1031,15 @@ class CalibrationGUI(QWidget):
         else:
             QMessageBox.warning(self, "Warning", "No valid ROIs found in table.")
 
-
     def load_calibration_data(self):
         file_path = "Calibration.xlsx"  # Set fixed filename
 
         if not os.path.exists(file_path):
-            QMessageBox.critical(self, "Error", "Calibration.xlsx file not found in the current directory.")
+            QMessageBox.critical(
+                self,
+                "Error",
+                "Calibration.xlsx file not found in the current directory.",
+            )
             return
 
         try:
@@ -681,13 +1049,17 @@ class CalibrationGUI(QWidget):
             filtered_columns = [col for col in df.columns if "(intensity)" not in col]
 
             if not filtered_columns:
-                QMessageBox.critical(self, "Error", "No valid columns found in Calibration.xlsx.")
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    "No valid columns found in Calibration.xlsx.",
+                )
                 return
 
             # Populate self.table_widget with filtered columns
-            self.table_widget.setRowCount(len(df))  
-            self.table_widget.setColumnCount(len(filtered_columns))  
-            self.table_widget.setHorizontalHeaderLabels(filtered_columns)  
+            self.table_widget.setRowCount(len(df))
+            self.table_widget.setColumnCount(len(filtered_columns))
+            self.table_widget.setHorizontalHeaderLabels(filtered_columns)
 
             for row, (_, row_data) in enumerate(df.iterrows()):
                 for col, column_name in enumerate(filtered_columns):
@@ -700,12 +1072,17 @@ class CalibrationGUI(QWidget):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load Calibration data: {str(e)}")
-    
 
     def load_roi_data(self):
         options = QFileDialog.Options()
-        file_path, _ = QFileDialog.getOpenFileName(self, "Load ROI Data", "", "Excel Files (*.xlsx *.xls);;All Files (*)", options=options)
-        
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load ROI Data",
+            "",
+            "Excel Files (*.xlsx *.xls);;All Files (*)",
+            options=options,
+        )
+
         if not file_path:
             return  # User canceled the dialog
 
@@ -715,7 +1092,11 @@ class CalibrationGUI(QWidget):
             # Ensure required columns exist
             required_columns = ["Standard Number", "Coordinates", "Name"]
             if not all(col in df.columns for col in required_columns):
-                QMessageBox.critical(self, "Error", "Excel file must contain 'Standard Number', 'Coordinates', and 'Name' columns.")
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    "Excel file must contain 'Standard Number', 'Coordinates', and 'Name' columns.",
+                )
                 return
 
             # Populate self.table_widget
@@ -773,10 +1154,9 @@ class CalibrationGUI(QWidget):
         if not text_files:
             QMessageBox.warning(self, "Warning", "No Maps files loaded.")
             return
-        self.log_message(f"✅ Processing text file: ")
+        self.log_message("✅ Processing text file: ")
         for file in text_files:
             self.log_message(f"{file} ✅")
-
 
         mean_intensities = {}
 
@@ -796,14 +1176,15 @@ class CalibrationGUI(QWidget):
                     self.log_message(f"⚠️ ROI out of bounds for {file_name}. Skipping.")
                     mean_values.append(None)
                 else:
-                    roi_data = text_data[y:y+h, x:x+w]
+                    roi_data = text_data[y : y + h, x : x + w]
                     mean_values.append(np.mean(roi_data))
 
             mean_intensities[column_name] = mean_values
 
         # Ensure all required columns exist in the table
-        existing_headers = [self.table_widget.horizontalHeaderItem(i).text() 
-                            for i in range(self.table_widget.columnCount())]
+        existing_headers = [
+            self.table_widget.horizontalHeaderItem(i).text() for i in range(self.table_widget.columnCount())
+        ]
         for column_name in mean_intensities.keys():
             if column_name not in existing_headers:
                 col_index = self.table_widget.columnCount()
@@ -818,10 +1199,10 @@ class CalibrationGUI(QWidget):
                 if header_item and header_item.text() in mean_intensities:
                     value = mean_intensities[header_item.text()][row_index]
                     if value is not None:
-                        self.table_widget.setItem(
-                            row_index, col, QTableWidgetItem(f"{value:.3f}")
+                        self.table_widget.setItem(row_index, col, QTableWidgetItem(f"{value:.3f}"))
+                        self.log_message(
+                            f"✅ Writing {value:.3f} to row {row_index}, column {col} ({header_item.text()})"
                         )
-                        self.log_message(f"✅ Writing {value:.3f} to row {row_index}, column {col} ({header_item.text()})")
 
         # Save data to Excel
         self.save_to_excel()
@@ -842,8 +1223,9 @@ class CalibrationGUI(QWidget):
         sheet = workbook.active
 
         # Write headers
-        table_headers = [self.table_widget.horizontalHeaderItem(i).text() 
-                        for i in range(self.table_widget.columnCount())]
+        table_headers = [
+            self.table_widget.horizontalHeaderItem(i).text() for i in range(self.table_widget.columnCount())
+        ]
         sheet.append(table_headers)
 
         # Write table data

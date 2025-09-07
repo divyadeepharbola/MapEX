@@ -1,23 +1,30 @@
 # main.py — MapEX launcher with working-directory routing and Refresh
-import sys
 import os
+import sys
 
-from PyQt5.QtCore import Qt, QSettings
-from PyQt5.QtGui import QFont, QColor, QFontMetrics, QPainter
+from PyQt5.QtCore import QSettings, Qt
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QStackedWidget, QMessageBox, QSizePolicy, QSpacerItem, QLabel, QFrame,
-    QFileDialog
+    QApplication,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QSpacerItem,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-# Your modules
-from preanalysis_step import PreanalysisStep
-from phase_mapping_step import PhaseMappingStep
 from analysis_step import AnalysisStep
+from phase_mapping_step import PhaseMappingStep
+from preanalysis_step import PreanalysisStep
 from visualization_step import VisualizationStep
 
-APP_TITLE = "MapEX"
-APP_ORG = "MapEX"
+APP_ORG = "IIT Bombay"
 APP_NAME = "MapEX"
 version = "v1.0.4"
 
@@ -57,28 +64,34 @@ class MapEXLogo(QFrame):
         self.setAttribute(Qt.WA_StyledBackground, False)
 
     def _fonts(self, px_main):
-        f_map = QFont(self.font_family); f_map.setPixelSize(px_main); f_map.setWeight(QFont.Black)
-        f_ex  = QFont(self.font_family); f_ex.setPixelSize(px_main); f_ex.setWeight(QFont.Black)
+        f_map = QFont(self.font_family)
+        f_map.setPixelSize(px_main)
+        f_map.setWeight(QFont.Black)
+        f_ex = QFont(self.font_family)
+        f_ex.setPixelSize(px_main)
+        f_ex.setWeight(QFont.Black)
         f_ex.setLetterSpacing(QFont.AbsoluteSpacing, self.ex_letter_px)
         px_ver = max(1, int(round(px_main * self.version_scale)))
-        f_ver = QFont(self.font_family); f_ver.setPixelSize(px_ver); f_ver.setWeight(QFont.DemiBold)
+        f_ver = QFont(self.font_family)
+        f_ver.setPixelSize(px_ver)
+        f_ver.setWeight(QFont.DemiBold)
         return f_map, f_ex, f_ver, px_ver
 
     def _bounds(self, px_main, inner_w, inner_h):
         f_map, f_ex, f_ver, _ = self._fonts(px_main)
         fm_map = QFontMetrics(f_map)
-        fm_ex  = QFontMetrics(f_ex)
+        fm_ex = QFontMetrics(f_ex)
         fm_ver = QFontMetrics(f_ver)
         w_map = fm_map.horizontalAdvance("Map")
-        w_ex  = fm_ex.horizontalAdvance("EX")
-        gap   = max(0, int(px_main * 0.04))
+        w_ex = fm_ex.horizontalAdvance("EX")
+        gap = max(0, int(px_main * 0.04))
         sub_offset = int(round(px_main * self.sub_offset_ratio))
         top_main = max(fm_map.ascent(), fm_ex.ascent())
         bot_main = max(fm_map.descent(), fm_ex.descent())
-        top_ver  = max(0, fm_ver.ascent() - sub_offset)
-        bot_ver  = fm_ver.descent() + sub_offset
+        top_ver = max(0, fm_ver.ascent() - sub_offset)
+        bot_ver = fm_ver.descent() + sub_offset
         height_total = max(top_main, top_ver) + max(bot_main, bot_ver)
-        width_total  = w_map + w_ex + gap + fm_ver.horizontalAdvance(self.version)
+        width_total = w_map + w_ex + gap + fm_ver.horizontalAdvance(self.version)
         fits = (width_total <= inner_w - 1) and (height_total <= inner_h - 1)
         baseline_top = max(top_main, top_ver)
         return fits, width_total, height_total, baseline_top, sub_offset
@@ -89,7 +102,8 @@ class MapEXLogo(QFrame):
             mid = (lo + hi) // 2
             fits, *_ = self._bounds(mid, inner_w, inner_h)
             if fits:
-                best = mid; lo = mid + 1
+                best = mid
+                lo = mid + 1
             else:
                 hi = mid - 1
         for bump in (1, 1):
@@ -103,9 +117,10 @@ class MapEXLogo(QFrame):
         self._last_px = None
 
     def paintEvent(self, e):
-        w = self.width(); h = self.height()
-        inner_w = max(8, w - 2*self.pad)
-        inner_h = max(8, h - 2*self.pad)
+        w = self.width()
+        h = self.height()
+        inner_w = max(8, w - 2 * self.pad)
+        inner_h = max(8, h - 2 * self.pad)
         px = self._last_px or self._choose_px(inner_w, inner_h)
         self._last_px = px
         f_map, f_ex, f_ver, _ = self._fonts(px)
@@ -118,17 +133,24 @@ class MapEXLogo(QFrame):
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setPen(Qt.NoPen)
         p.setBrush(self.bg_color)
-        r = self.rect(); r.adjust(0, 0, -1, -1)
+        r = self.rect()
+        r.adjust(0, 0, -1, -1)
         p.drawRoundedRect(r, self.radius, self.radius)
 
-        p.setFont(f_map); p.setPen(self.color_map); p.drawText(x0, y0, "Map")
+        p.setFont(f_map)
+        p.setPen(self.color_map)
+        p.drawText(x0, y0, "Map")
         fm_map = QFontMetrics(f_map)
         x = x0 + fm_map.horizontalAdvance("Map")
-        p.setFont(f_ex); p.setPen(self.color_ex); p.drawText(x, y0, "EX")
+        p.setFont(f_ex)
+        p.setPen(self.color_ex)
+        p.drawText(x, y0, "EX")
         fm_ex = QFontMetrics(f_ex)
         x += fm_ex.horizontalAdvance("EX")
         x += max(0, int(px * 0.04))
-        p.setFont(f_ver); p.setPen(self.color_version); p.drawText(x, y0 + sub_offset, self.version)
+        p.setFont(f_ver)
+        p.setPen(self.color_version)
+        p.drawText(x, y0 + sub_offset, self.version)
         p.end()
 
 
@@ -136,7 +158,7 @@ class FlowChartGUI(QWidget):
     def __init__(self):
         super().__init__()
         self.current_step = 0
-        self.setWindowTitle(APP_TITLE)
+        self.setWindowTitle(APP_NAME)
         self.resize(1100, 700)
 
         # Working directory
@@ -161,14 +183,20 @@ class FlowChartGUI(QWidget):
         root.setSpacing(8)
 
         # Top row: Logo + step buttons + spacer + utilities
-        steps = QHBoxLayout(); steps.setSpacing(6)
+        steps = QHBoxLayout()
+        steps.setSpacing(6)
 
         # Step buttons
         self.btn_pre = QPushButton("Preanalysis")
         self.btn_phase = QPushButton("Phase Classification")
         self.btn_analysis = QPushButton("Analysis")
         self.btn_viz = QPushButton("Visualization")
-        for b in (self.btn_pre, self.btn_phase, self.btn_analysis, self.btn_viz):
+        for b in (
+            self.btn_pre,
+            self.btn_phase,
+            self.btn_analysis,
+            self.btn_viz,
+        ):
             b.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
         # Logo (left)
@@ -181,7 +209,12 @@ class FlowChartGUI(QWidget):
 
         steps.addWidget(self.logo_widget, 0, Qt.AlignVCenter)
         steps.addSpacing(8)
-        for b in (self.btn_pre, self.btn_phase, self.btn_analysis, self.btn_viz):
+        for b in (
+            self.btn_pre,
+            self.btn_phase,
+            self.btn_analysis,
+            self.btn_viz,
+        ):
             steps.addWidget(b)
 
         # Stretch pushes utilities right
@@ -191,7 +224,11 @@ class FlowChartGUI(QWidget):
         self.btn_change_folder = QPushButton("Change Folder…")
         self.btn_refresh = QPushButton("Refresh")
         self.btn_calibration = QPushButton("Calibration")
-        for b in (self.btn_change_folder, self.btn_refresh, self.btn_calibration):
+        for b in (
+            self.btn_change_folder,
+            self.btn_refresh,
+            self.btn_calibration,
+        ):
             b.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         steps.addWidget(self.btn_change_folder)
         steps.addWidget(self.btn_refresh)
@@ -200,7 +237,8 @@ class FlowChartGUI(QWidget):
         root.addLayout(steps)
 
         # Working dir display
-        info_row = QHBoxLayout(); info_row.setSpacing(6)
+        info_row = QHBoxLayout()
+        info_row.setSpacing(6)
         self.lbl_workdir = QLabel("Working folder: —")
         self.lbl_workdir.setStyleSheet("QLabel { color: #444; }")
         self.lbl_workdir.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -223,8 +261,7 @@ class FlowChartGUI(QWidget):
         root.addWidget(self.stack_widget)
 
         self.setStyleSheet(
-            "QWidget { font-family: Segoe UI, Arial; font-size: 10pt; }"
-            "QPushButton { padding: 6px 10px; }"
+            "QWidget { font-family: Segoe UI, Arial; font-size: 10pt; }" "QPushButton { padding: 6px 10px; }"
         )
 
     def _wire_signals(self):
@@ -298,7 +335,11 @@ class FlowChartGUI(QWidget):
         self.switch_step(0)
 
     def _dispose_heavy_pages(self):
-        for idx, attr in [(1, "phase_mapping_widget"), (2, "analysis_widget"), (3, "visualization_widget")]:
+        for idx, attr in [
+            (1, "phase_mapping_widget"),
+            (2, "analysis_widget"),
+            (3, "visualization_widget"),
+        ]:
             w = getattr(self, attr)
             if w is not None:
                 try:
@@ -332,8 +373,10 @@ class FlowChartGUI(QWidget):
 
     def switch_step(self, index: int):
         if not isinstance(index, int):
-            try: index = int(index)
-            except Exception: return
+            try:
+                index = int(index)
+            except Exception:
+                return
         if index < 0 or index > 3:
             return
 
@@ -419,8 +462,14 @@ class FlowChartGUI(QWidget):
             if self.preanalysis_widget is not None and hasattr(self.preanalysis_widget, "open_calibration"):
                 self.preanalysis_widget.open_calibration()
             else:
-                import subprocess, sys as _sys
-                subprocess.run([_sys.executable, "Calibration.py"], check=True, cwd=self.working_dir or os.getcwd())
+                import subprocess
+                import sys as _sys
+
+                subprocess.run(
+                    [_sys.executable, "Calibration.py"],
+                    check=True,
+                    cwd=self.working_dir or os.getcwd(),
+                )
         except Exception as e:
             QMessageBox.critical(self, "Calibration", f"Could not launch Calibration.py:\n{e}")
 
@@ -433,7 +482,12 @@ class FlowChartGUI(QWidget):
 
     def update_step(self):
         self.stack_widget.setCurrentIndex(self.current_step)
-        buttons = [self.btn_pre, self.btn_phase, self.btn_analysis, self.btn_viz]
+        buttons = [
+            self.btn_pre,
+            self.btn_phase,
+            self.btn_analysis,
+            self.btn_viz,
+        ]
         for i, btn in enumerate(buttons):
             if i == self.current_step:
                 btn.setStyleSheet("QPushButton { background-color: lightblue; font-weight: bold; }")
@@ -446,12 +500,15 @@ class FlowChartGUI(QWidget):
     # Keyboard: Ctrl+Left/Right (or Ctrl+A/D) + F5 refresh
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_F5:
-            self._refresh_current(); return
+            self._refresh_current()
+            return
         if event.modifiers() & Qt.ControlModifier:
             if event.key() in (Qt.Key_Right, Qt.Key_D):
-                self.switch_step(min(3, self.current_step + 1)); return
+                self.switch_step(min(3, self.current_step + 1))
+                return
             if event.key() in (Qt.Key_Left, Qt.Key_A):
-                self.switch_step(max(0, self.current_step - 1)); return
+                self.switch_step(max(0, self.current_step - 1))
+                return
         super().keyPressEvent(event)
 
 

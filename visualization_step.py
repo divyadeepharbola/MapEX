@@ -1,27 +1,41 @@
-import sys
-import os
 import math
-import h5py
-import pandas as pd
-import numpy as np
+import os
+import sys
 
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QPoint, QRect, QEvent
-from PyQt5.QtGui import QPixmap, QPainter, QPen, QImage, QColor, QFont
+import h5py
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
+from PyQt5.QtCore import QEvent, QPoint, QRect, Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PyQt5.QtWidgets import (
-    QApplication, QLabel, QVBoxLayout, QHBoxLayout, QPushButton,
-    QWidget, QFileDialog, QTextEdit, QColorDialog, QComboBox, QGroupBox,
-    QFormLayout, QMessageBox, QSizePolicy, QDoubleSpinBox, QLineEdit, QSlider, QSplitter
+    QApplication,
+    QColorDialog,
+    QComboBox,
+    QFileDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QSlider,
+    QSplitter,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
-import matplotlib
 matplotlib.use("Agg")  # for PDF export without GUI backend
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.ticker import ScalarFormatter, MaxNLocator
 
 # ==========================
 # Helpers
 # ==========================
+
 
 def _ensure_uint8(img: np.ndarray) -> np.ndarray:
     if img.dtype == np.uint8:
@@ -67,12 +81,18 @@ def numpy_to_qimage(arr: np.ndarray) -> QImage:
     return qimg.copy()
 
 
-def _apply_cmap_to_map(arr: np.ndarray, cmap_name: str, gain: float = 1.0, bias: float = 0.0, gamma: float = 1.0) -> np.ndarray:
+def _apply_cmap_to_map(
+    arr: np.ndarray,
+    cmap_name: str,
+    gain: float = 1.0,
+    bias: float = 0.0,
+    gamma: float = 1.0,
+) -> np.ndarray:
     """Apply a Matplotlib colormap to a 2D array and return uint8 RGB.
 
-    gain  >1 brightens (multiplier on normalized values)
-    bias  shifts brightness (adds after gain)
-    gamma <1 brightens midtones, >1 darkens midtones
+    gain  >1 brightens (multiplier on normalized values) bias  shifts
+    brightness (adds after gain) gamma <1 brightens midtones, >1 darkens
+    midtones
     """
     if arr.ndim != 2:
         return _to_rgb_like(arr)
@@ -103,6 +123,7 @@ def _apply_cmap_to_map(arr: np.ndarray, cmap_name: str, gain: float = 1.0, bias:
 # ==========================
 # Data Loader
 # ==========================
+
 
 class DataLoader(QThread):
     data_loaded = pyqtSignal(list, list, dict, str, str)
@@ -140,6 +161,7 @@ class DataLoader(QThread):
 # Image Canvas (ROI drawing overlay) with correct pixmap offset math
 # ==========================
 
+
 class ImageCanvas(QLabel):
     roi_drawn = pyqtSignal(int, int, int, int)
 
@@ -148,8 +170,8 @@ class ImageCanvas(QLabel):
         self.setMouseTracking(True)
         self._mark_mode = False
         self._dragging = False
-        self._start_px = None   # in pixmap coords
-        self._current_px = None # in pixmap coords
+        self._start_px = None  # in pixmap coords
+        self._current_px = None  # in pixmap coords
         self._overlay_rect_px = None  # QRect in pixmap coords
 
         # Make the label expand without enforcing giant minimums
@@ -235,10 +257,12 @@ class ImageCanvas(QLabel):
 # Main Widget
 # ==========================
 
+
 class VisualizationStep(QWidget):
-    
+
     def _default_folder(self):
-        """Prefer an explicit working_dir if set; else use the folder of data_path; else CWD."""
+        """Prefer an explicit working_dir if set; else use the folder of
+        data_path; else CWD."""
         folder = getattr(self, "working_dir", None)
         if not folder and getattr(self, "data_path", None):
             try:
@@ -261,20 +285,20 @@ class VisualizationStep(QWidget):
         self.data_list = []
         self.image_list = []
         self.maps = {}
-        self.roi_coordinates = pd.DataFrame(columns=["X1","Y1","X2","Y2","ROI Name"])
+        self.roi_coordinates = pd.DataFrame(columns=["X1", "Y1", "X2", "Y2", "ROI Name"])
         self.roi_source_path = None
 
         self.roi_color = Qt.red
 
         # Background display state
-        self._current_kind = None        # 'image' | 'map'
+        self._current_kind = None  # 'image' | 'map'
         self._current_name = None
-        self._current_qimage = None      # QImage in *source* pixels
-        self._current_map_array = None   # 2D numpy if kind == 'map'
+        self._current_qimage = None  # QImage in *source* pixels
+        self._current_map_array = None  # 2D numpy if kind == 'map'
 
         # Brightness controls for maps
-        self._gain = 1.0   # 0.5 .. 2.0
-        self._bias = 0.0   # not exposed in UI for now
+        self._gain = 1.0  # 0.5 .. 2.0
+        self._bias = 0.0  # not exposed in UI for now
         self._gamma = 1.0  # not exposed in UI for now
 
         # Scale mode
@@ -282,8 +306,21 @@ class VisualizationStep(QWidget):
 
         # Available colormaps
         self.available_cmaps = [
-            "gray","viridis","plasma","inferno","magma","cividis",
-            "turbo","cubehelix","terrain","hot","cool","spring","summer","autumn","winter"
+            "gray",
+            "viridis",
+            "plasma",
+            "inferno",
+            "magma",
+            "cividis",
+            "turbo",
+            "cubehelix",
+            "terrain",
+            "hot",
+            "cool",
+            "spring",
+            "summer",
+            "autumn",
+            "winter",
         ]
 
         # Scale bar state
@@ -291,7 +328,7 @@ class VisualizationStep(QWidget):
         self._scale_bar_thickness = 6
         self._scale_bar_pos = "Bottom-Left"  # Bottom-Left/Bottom-Right/Top-Left/Top-Right
         # Physical calibration for scale bar
-        self._pixel_size_value = 1.0   # default 1 µm per pixel
+        self._pixel_size_value = 1.0  # default 1 µm per pixel
         self._pixel_size_unit = "µm"  # one of ['mm','µm','nm']
         self._scale_target_um = 100.0  # fixed physical length to represent
 
@@ -332,8 +369,8 @@ class VisualizationStep(QWidget):
         # --- Log panel ---
         self.log_text = QTextEdit(self)
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumWidth(0)         # remove 420px constraint
-        self.log_text.setMinimumHeight(120)      # give it some height
+        self.log_text.setMinimumWidth(0)  # remove 420px constraint
+        self.log_text.setMinimumHeight(120)  # give it some height
 
         # --- Controls group ---
         controls = QGroupBox("Plot & ROI Controls", self)
@@ -374,7 +411,8 @@ class VisualizationStep(QWidget):
         hb_bright = QHBoxLayout()
         hb_bright.addWidget(self.slider_bright)
         hb_bright.addWidget(self.lbl_bright_val)
-        bright_row = QWidget(self); bright_row.setLayout(hb_bright)
+        bright_row = QWidget(self)
+        bright_row.setLayout(hb_bright)
         form.addRow("Brightness:", bright_row)
 
         # # Scale bar controls
@@ -434,7 +472,8 @@ class VisualizationStep(QWidget):
         self.plot_style = "Scatter"
 
         self.dd_container = QGroupBox("Plot Inputs", self)
-        self.dd_form = QFormLayout(); self.dd_container.setLayout(self.dd_form)
+        self.dd_form = QFormLayout()
+        self.dd_container.setLayout(self.dd_form)
         form.addRow(self.dd_container)
 
         self.btn_report = QPushButton("Generate Report (PDF)", self)
@@ -466,9 +505,9 @@ class VisualizationStep(QWidget):
         # Mount the splitter into the fixed-width left container
         left_layout.addWidget(splitter_left)
 
-        # Finally add the left container to root; keep stretch=0 so it stays narrow
+        # Finally add the left container to root; keep stretch=0 so it stays
+        # narrow
         root.addWidget(left_container, stretch=0)
-
 
         # RIGHT
         right = QVBoxLayout()
@@ -530,7 +569,7 @@ class VisualizationStep(QWidget):
         self.maps = maps_dict or {}
         self.image_list = []
 
-        for name, arr in (image_list or []):
+        for name, arr in image_list or []:
             try:
                 arr_rgb = _to_rgb_like(arr)
                 self.image_list.append((name, arr_rgb))
@@ -594,7 +633,7 @@ class VisualizationStep(QWidget):
                 self._set_current_map(nm, self.maps[nm])
 
     def _set_current_image(self, name: str, rgb_arr: np.ndarray):
-        self._current_kind = 'image'
+        self._current_kind = "image"
         self._current_name = name
         self._current_map_array = None
         self.slider_bright.setEnabled(False)
@@ -603,7 +642,7 @@ class VisualizationStep(QWidget):
         self._update_scaled_pixmap()
 
     def _set_current_map(self, name: str, map_arr: np.ndarray):
-        self._current_kind = 'map'
+        self._current_kind = "map"
         self._current_name = name
         self._current_map_array = map_arr
         self.slider_bright.setEnabled(True)
@@ -611,28 +650,35 @@ class VisualizationStep(QWidget):
         self._update_scaled_pixmap()
 
     def _rebuild_qimage_from_map(self):
-        if self._current_kind != 'map' or self._current_map_array is None:
+        if self._current_kind != "map" or self._current_map_array is None:
             return
         cmap_name = self.dd_cmap.currentText()
         # Cache min/max for colorbar
         try:
             data = self._current_map_array.astype(np.float32)
-            vmin = float(np.nanmin(data)); vmax = float(np.nanmax(data))
+            vmin = float(np.nanmin(data))
+            vmax = float(np.nanmax(data))
             if not np.isfinite([vmin, vmax]).all() or vmax <= vmin:
-                vmin = 0.0; vmax = 1.0
+                vmin = 0.0
+                vmax = 1.0
         except Exception:
             vmin, vmax = 0.0, 1.0
         self._last_map_min = vmin
         self._last_map_max = vmax
         self._last_cmap_name = cmap_name
-        rgb = _apply_cmap_to_map(self._current_map_array, cmap_name, gain=self._gain, bias=self._bias, gamma=self._gamma)
+        rgb = _apply_cmap_to_map(
+            self._current_map_array,
+            cmap_name,
+            gain=self._gain,
+            bias=self._bias,
+            gamma=self._gamma,
+        )
         self._current_qimage = numpy_to_qimage(rgb)
 
-    
     def _compose_pixmap_with_rois(self, base_pm: QPixmap) -> QPixmap:
         pm = QPixmap(base_pm)  # copy
         # Draw colorbar if map background
-        if getattr(self, "_current_kind", None) == 'map' and pm and not pm.isNull():
+        if getattr(self, "_current_kind", None) == "map" and pm and not pm.isNull():
             pm = self._draw_colorbar(pm)
         # Draw scale bar next
         if getattr(self, "_show_scale_bar", False) and pm and not pm.isNull():
@@ -641,7 +687,7 @@ class VisualizationStep(QWidget):
         if self.roi_coordinates is not None and not self.roi_coordinates.empty:
             pm = self._draw_rectangles(pm)
         return pm
-   
+
     def _toggle_scale_bar(self):
         self._show_scale_bar = not self._show_scale_bar
         self._update_scaled_pixmap()
@@ -660,13 +706,14 @@ class VisualizationStep(QWidget):
             self._update_scaled_pixmap()
 
     def _draw_colorbar(self, pm: QPixmap) -> QPixmap:
-        """Overlay a vertical colorbar on the right side when a map is displayed."""
+        """Overlay a vertical colorbar on the right side when a map is
+        displayed."""
         vmin = getattr(self, "_last_map_min", None)
         vmax = getattr(self, "_last_map_max", None)
         try:
             cmap_name = self.dd_cmap.currentText()
         except Exception:
-            cmap_name = 'viridis'
+            cmap_name = "viridis"
         if vmin is None or vmax is None or not np.isfinite([vmin, vmax]).all() or vmax <= vmin:
             return pm
 
@@ -680,22 +727,27 @@ class VisualizationStep(QWidget):
         try:
             cmap = plt.get_cmap(cmap_name)
         except Exception:
-            cmap = plt.get_cmap('viridis')
+            cmap = plt.get_cmap("viridis")
         n = 256
         grad = np.linspace(1.0, 0.0, n, dtype=np.float32)
         rgba = cmap(grad, bytes=True)
         rgb = rgba[:, :3]
-        bar_img = np.repeat(rgb[np.newaxis, :, :], bar_w, axis=0).transpose(1,0,2)
+        bar_img = np.repeat(rgb[np.newaxis, :, :], bar_w, axis=0).transpose(1, 0, 2)
         qbar = numpy_to_qimage(bar_img)
         qpm_bar = QPixmap.fromImage(qbar).scaled(bar_w, y1 - y0, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
 
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing, True)
-        p.fillRect(QRect(x0-4, y0-4, bar_w+8, (y1-y0)+8), QColor(0,0,0,120))
+        p.fillRect(
+            QRect(x0 - 4, y0 - 4, bar_w + 8, (y1 - y0) + 8),
+            QColor(0, 0, 0, 120),
+        )
         p.drawPixmap(x0, y0, qpm_bar)
 
-        f = QFont(); f.setPointSize(max(7, int(pm.height()*0.025))); p.setFont(f)
-        p.setPen(QColor(255,255,255))
+        f = QFont()
+        f.setPointSize(max(7, int(pm.height() * 0.025)))
+        p.setFont(f)
+        p.setPen(QColor(255, 255, 255))
         p.drawText(x0 - 6, y0 + 10, f"{vmax:.3g}")
         p.drawText(x0 - 6, y1, f"{vmin:.3g}")
         p.end()
@@ -703,68 +755,80 @@ class VisualizationStep(QWidget):
 
     def _draw_scale_bar(self, pm: QPixmap) -> QPixmap:
         from PyQt5.QtGui import QFont
+
         p = QPainter(pm)
         p.setRenderHint(QPainter.Antialiasing, True)
         w, h = pm.width(), pm.height()
 
         # Geometry & conversion
-        margin = max(6, min(w, h)//50)
+        margin = max(6, min(w, h) // 50)
         # Convert pixel size to micrometers per pixel
         unit = getattr(self, "_pixel_size_unit", "µm")
         val = max(1e-12, float(getattr(self, "_pixel_size_value", 0.0) or 0.0))
         if unit == "mm":
             um_per_px = val * 1000.0
-        elif unit in ("µm","um"):
+        elif unit in ("µm", "um"):
             um_per_px = val
         else:  # "nm"
             um_per_px = val * 1e-3
 
         target_um = float(getattr(self, "_scale_target_um", 100.0))
         px_len = max(1.0, target_um / max(um_per_px, 1e-12))
-        bar_len = int(min(px_len, w - 2*margin))
-        bar_th = int(max(2, min(self._scale_bar_thickness, max(2, h//60))))
+        bar_len = int(min(px_len, w - 2 * margin))
+        bar_th = int(max(2, min(self._scale_bar_thickness, max(2, h // 60))))
 
         # Placement
         pos = getattr(self, "_scale_bar_pos", "Bottom-Left")
         if pos == "Bottom-Right":
             x = w - margin - bar_len
             y = h - margin - bar_th
-            text_x = x + bar_len; text_y = y - 6
+            text_x = x + bar_len
+            text_y = y - 6
         elif pos == "Top-Left":
             x = margin
             y = margin
-            text_x = x; text_y = y - 6
+            text_x = x
+            text_y = y - 6
         elif pos == "Top-Right":
             x = w - margin - bar_len
             y = margin
-            text_x = x + bar_len; text_y = y - 6
+            text_x = x + bar_len
+            text_y = y - 6
         else:  # Bottom-Left
             x = margin
             y = h - margin - bar_th
-            text_x = x; text_y = y - 6
+            text_x = x
+            text_y = y - 6
 
         # Draw bar (white with black border)
-        pen = QPen(QColor(0,0,0)); pen.setWidth(max(1, bar_th + 2)); p.setPen(pen)
-        p.drawLine(x, y + bar_th//2, x + bar_len, y + bar_th//2)
-        pen = QPen(QColor(255,255,255)); pen.setWidth(max(1, bar_th)); p.setPen(pen)
-        p.drawLine(x, y + bar_th//2, x + bar_len, y + bar_th//2)
+        pen = QPen(QColor(0, 0, 0))
+        pen.setWidth(max(1, bar_th + 2))
+        p.setPen(pen)
+        p.drawLine(x, y + bar_th // 2, x + bar_len, y + bar_th // 2)
+        pen = QPen(QColor(255, 255, 255))
+        pen.setWidth(max(1, bar_th))
+        p.setPen(pen)
+        p.drawLine(x, y + bar_th // 2, x + bar_len, y + bar_th // 2)
 
         # Label (fixed 100 µm)
         label = f"{int(target_um) if abs(target_um - int(target_um)) < 1e-6 else target_um:g} µm"
-        f = QFont(); f.setPointSize(max(7, int(h*0.025))); p.setFont(f)
+        f = QFont()
+        f.setPointSize(max(7, int(h * 0.025)))
+        p.setFont(f)
         # text shadow for legibility
-        for dx, dy in [(-1,0),(1,0),(0,-1),(0,1)]:
-            p.setPen(QColor(0,0,0))
-            p.drawText(text_x+dx, text_y+dy, label)
-        p.setPen(QColor(255,255,255))
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            p.setPen(QColor(0, 0, 0))
+            p.drawText(text_x + dx, text_y + dy, label)
+        p.setPen(QColor(255, 255, 255))
         p.drawText(text_x, text_y, label)
 
         p.end()
         return pm
 
-
     def _update_scaled_pixmap(self):
-        """Scale the current QImage according to the chosen scale mode and center it.
+        """Scale the current QImage according to the chosen scale mode
+        and center it.
+
         - Fit (keep AR): image fits inside the panel (letterbox if needed)
         - Fill (crop, keep AR): image fills the panel by cropping
         - Stretch (ignore AR): image is stretched to panel
@@ -783,10 +847,11 @@ class VisualizationStep(QWidget):
             mode = Qt.IgnoreAspectRatio
 
         scaled = self._current_qimage.scaled(area_size, mode, Qt.SmoothTransformation)
-        # If we used Fill/Expanding, scaled might be bigger than label; crop to label size
+        # If we used Fill/Expanding, scaled might be bigger than label; crop to
+        # label size
         if mode == Qt.KeepAspectRatioByExpanding:
             # center crop to label size
-            x = max(0, (scaled.width()  - area_size.width())  // 2)
+            x = max(0, (scaled.width() - area_size.width()) // 2)
             y = max(0, (scaled.height() - area_size.height()) // 2)
             cropped = scaled.copy(x, y, area_size.width(), area_size.height())
             pm = QPixmap.fromImage(cropped)
@@ -858,12 +923,14 @@ class VisualizationStep(QWidget):
             required = ["X1", "Y1", "X2", "Y2"]
             if not all(col in df.columns for col in required):
                 raise ValueError("ROI Excel must contain columns: X1, Y1, X2, Y2")
-            out = pd.DataFrame({
-                "X1": df["X1"].astype(int),
-                "Y1": df["Y1"].astype(int),
-                "X2": df["X2"].astype(int),
-                "Y2": df["Y2"].astype(int),
-            })
+            out = pd.DataFrame(
+                {
+                    "X1": df["X1"].astype(int),
+                    "Y1": df["Y1"].astype(int),
+                    "X2": df["X2"].astype(int),
+                    "Y2": df["Y2"].astype(int),
+                }
+            )
             roi_name_series = None
             if "ROI NAME" in df.columns:
                 roi_name_series = df["ROI NAME"].astype(str)
@@ -886,7 +953,7 @@ class VisualizationStep(QWidget):
             self.roi_source_path = path
             self.log(f"Loaded ROI coordinates from: {os.path.abspath(path)}")
             self._refresh_delete_roi_dropdown()
-            if self._current_kind == 'map':
+            if self._current_kind == "map":
                 self._rebuild_qimage_from_map()
             self._update_scaled_pixmap()
             try:
@@ -904,7 +971,12 @@ class VisualizationStep(QWidget):
         if self.roi_source_path:
             path = self.roi_source_path
         else:
-            path, _ = QFileDialog.getSaveFileName(self, "Save ROI Excel", os.path.join(self._default_folder(), "roi_coordinates.xlsx"), "Excel Files (*.xlsx)")
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save ROI Excel",
+                os.path.join(self._default_folder(), "roi_coordinates.xlsx"),
+                "Excel Files (*.xlsx)",
+            )
             if not path:
                 return
             self.roi_source_path = path
@@ -923,17 +995,28 @@ class VisualizationStep(QWidget):
         if pm is not None:
             W, H = pm.width(), pm.height()
         else:
-            if self._current_kind == 'map' and self._current_map_array is not None:
+            if self._current_kind == "map" and self._current_map_array is not None:
                 H, W = self._current_map_array.shape[:2]
             elif self._current_qimage is not None:
-                W, H = self._current_qimage.width(), self._current_qimage.height()
+                W, H = (
+                    self._current_qimage.width(),
+                    self._current_qimage.height(),
+                )
             else:
                 return roi_df
         xs1 = np.clip(roi_df["X1"].to_numpy(), 0, W)
         ys1 = np.clip(roi_df["Y1"].to_numpy(), 0, H)
         xs2 = np.clip(roi_df["X2"].to_numpy(), 0, W)
         ys2 = np.clip(roi_df["Y2"].to_numpy(), 0, H)
-        out = pd.DataFrame({"X1": xs1, "Y1": ys1, "X2": xs2, "Y2": ys2, "ROI Name": roi_df["ROI Name"]})
+        out = pd.DataFrame(
+            {
+                "X1": xs1,
+                "Y1": ys1,
+                "X2": xs2,
+                "Y2": ys2,
+                "ROI Name": roi_df["ROI Name"],
+            }
+        )
         if save_copy:
             updated_path = os.path.join(os.getcwd(), "roi_coordinates_updated.xlsx")
             try:
@@ -950,11 +1033,18 @@ class VisualizationStep(QWidget):
         painter.setRenderHint(QPainter.Antialiasing, True)
         pen = QPen(QColor(self.roi_color), 2, Qt.SolidLine)
         painter.setPen(pen)
-        font = painter.font(); font.setPointSize(10); font.setBold(True)
+        font = painter.font()
+        font.setPointSize(10)
+        font.setBold(True)
         painter.setFont(font)
         for idx, row in self.roi_coordinates.iterrows():
             try:
-                x1, y1, x2, y2 = int(row["X1"]), int(row["Y1"]), int(row["X2"]), int(row["Y2"])
+                x1, y1, x2, y2 = (
+                    int(row["X1"]),
+                    int(row["Y1"]),
+                    int(row["X2"]),
+                    int(row["Y2"]),
+                )
                 name = str(row.get("ROI Name", f"ROI{idx+1}"))
                 painter.drawRect(x1, y1, max(1, x2 - x1), max(1, y2 - y1))
                 painter.drawText(x1, max(12, y1 - 5), name)
@@ -969,7 +1059,8 @@ class VisualizationStep(QWidget):
         self.log("Mark ROI mode: " + ("ON" if enabled else "OFF"))
 
     def on_roi_drawn_from_canvas(self, x1, y1, x2, y2):
-        base = "ROI"; idx = 1
+        base = "ROI"
+        idx = 1
         existing = set(self.roi_coordinates["ROI Name"].astype(str)) if not self.roi_coordinates.empty else set()
         while f"{base}{idx}" in existing or f"{base} {idx}" in existing:
             idx += 1
@@ -991,7 +1082,8 @@ class VisualizationStep(QWidget):
         if self.roi_coordinates is not None and not self.roi_coordinates.empty:
             names += list(self.roi_coordinates["ROI Name"].astype(str))
         self.dd_delete_roi.blockSignals(True)
-        self.dd_delete_roi.clear(); self.dd_delete_roi.addItems(names)
+        self.dd_delete_roi.clear()
+        self.dd_delete_roi.addItems(names)
         self.dd_delete_roi.blockSignals(False)
 
     def delete_selected_roi(self):
@@ -1015,7 +1107,7 @@ class VisualizationStep(QWidget):
 
     def clear_all_rois(self):
         n = len(self.roi_coordinates)
-        self.roi_coordinates = pd.DataFrame(columns=["X1","Y1","X2","Y2","ROI Name"])
+        self.roi_coordinates = pd.DataFrame(columns=["X1", "Y1", "X2", "Y2", "ROI Name"])
         self._refresh_delete_roi_dropdown()
         self._update_scaled_pixmap()
         self.log(f"Cleared all ROIs ({n}).")
@@ -1048,7 +1140,7 @@ class VisualizationStep(QWidget):
         self._gain = 1.0 + (val / 100.0)
         self._gain = max(0.5, min(2.0, self._gain))
         self.lbl_bright_val.setText(f"{val:+d}%")
-        if self._current_kind == 'map':
+        if self._current_kind == "map":
             self._rebuild_qimage_from_map()
             self._update_scaled_pixmap()
 
@@ -1059,7 +1151,12 @@ class VisualizationStep(QWidget):
             self.log("No background to save.")
             return
         default_name = "background_with_roi.png"
-        save_path, _ = QFileDialog.getSaveFileName(self, "Save Image with ROI", os.path.join(self._default_folder(), default_name), "PNG Files (*.png)")
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Image with ROI",
+            os.path.join(self._default_folder(), default_name),
+            "PNG Files (*.png)",
+        )
         if not save_path:
             return
         if not pm.save(save_path):
@@ -1096,7 +1193,12 @@ class VisualizationStep(QWidget):
 
     # ---------- Upload ----------
     def upload_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Open Image", "", "Image Files (*.png *.jpg *.bmp);;All Files (*)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Image",
+            "",
+            "Image Files (*.png *.jpg *.bmp);;All Files (*)",
+        )
         if not file_path:
             return
         qimg = QImage(file_path)
@@ -1120,20 +1222,28 @@ class VisualizationStep(QWidget):
 
     def _roi_mask(self, roi, target_shape=None):
         """Return a boolean mask for the ROI.
-        If target_shape is None, the mask is in *pixmap* coordinates (for display).
-        If target_shape=(H,W) is given, the mask is mapped into the *data array* coordinates
-        accounting for the current pixmap scaling/cropping mode.
+
+        If target_shape is None, the mask is in *pixmap* coordinates
+        (for display). If target_shape=(H,W) is given, the mask is
+        mapped into the *data array* coordinates accounting for the
+        current pixmap scaling/cropping mode.
         """
         pm = self.image_label.pixmap()
         if not pm:
             return None
         pw, ph = pm.width(), pm.height()
         # ROI rectangle in pixmap coordinates
-        x1, y1, x2, y2 = int(roi.get("X1", 0)), int(roi.get("Y1", 0)), int(roi.get("X2", 0)), int(roi.get("Y2", 0))
+        x1, y1, x2, y2 = (
+            int(roi.get("X1", 0)),
+            int(roi.get("Y1", 0)),
+            int(roi.get("X2", 0)),
+            int(roi.get("Y2", 0)),
+        )
         x1, x2 = sorted((max(0, x1), min(pw, x2)))
         y1, y2 = sorted((max(0, y1), min(ph, y2)))
 
-        # If no target_shape requested, return mask in pixmap coords (old behaviour)
+        # If no target_shape requested, return mask in pixmap coords (old
+        # behaviour)
         if target_shape is None:
             mask = np.zeros((ph, pw), dtype=bool)
             mask[y1:y2, x1:x2] = True
@@ -1146,21 +1256,27 @@ class VisualizationStep(QWidget):
         qw = qh = None
         try:
             if getattr(self, "_current_qimage", None) is not None:
-                qw, qh = self._current_qimage.width(), self._current_qimage.height()
+                qw, qh = (
+                    self._current_qimage.width(),
+                    self._current_qimage.height(),
+                )
         except Exception:
             qw = qh = None
 
-        # Fallback: if we don't know the source size, map proportionally from pixmap->target
+        # Fallback: if we don't know the source size, map proportionally from
+        # pixmap->target
         if not qw or not qh:
             xs = x1 * (Wt / float(pw or 1))
             xe = x2 * (Wt / float(pw or 1))
             ys = y1 * (Ht / float(ph or 1))
             ye = y2 * (Ht / float(ph or 1))
         else:
-            # Compute mapping from pixmap -> source coords depending on scale mode
+            # Compute mapping from pixmap -> source coords depending on scale
+            # mode
             scale_mode = getattr(self, "_scale_mode", "Fit (keep AR)") or "Fit (keep AR)"
             if scale_mode.startswith("Fit"):
-                # pm is scaled version of source with uniform scale s = pw/qw = ph/qh
+                # pm is scaled version of source with uniform scale s = pw/qw =
+                # ph/qh
                 s = pw / float(qw)
                 xs_src, xe_src = x1 / s, x2 / s
                 ys_src, ye_src = y1 / s, y2 / s
@@ -1179,7 +1295,8 @@ class VisualizationStep(QWidget):
                 xs_src, xe_src = x1 / sx, x2 / sx
                 ys_src, ye_src = y1 / sy, y2 / sy
 
-            # If target array shape differs from source QImage, scale accordingly
+            # If target array shape differs from source QImage, scale
+            # accordingly
             if (Ht, Wt) != (qh, qw):
                 xs = xs_src * (Wt / float(qw))
                 xe = xe_src * (Wt / float(qw))
@@ -1199,28 +1316,30 @@ class VisualizationStep(QWidget):
             mask[yi1:yi2, xi1:xi2] = True
         return mask
 
-    
     def _flatten_roi(self, arr, mask):
         # Ensure boolean mask matches array shape
         try:
             if mask.shape != arr.shape[:2]:
-                # Attempt proportional remap from mask->arr using simple scaling
+                # Attempt proportional remap from mask->arr using simple
+                # scaling
                 mh, mw = mask.shape[:2]
                 ah, aw = arr.shape[:2]
                 # Compute bounding box of mask and map to arr
                 ys, xs = np.where(mask)
                 if ys.size and xs.size:
-                    y1, y2 = ys.min(), ys.max()+1
-                    x1, x2 = xs.min(), xs.max()+1
+                    y1, y2 = ys.min(), ys.max() + 1
+                    x1, x2 = xs.min(), xs.max() + 1
                     # Map coordinates proportionally
-                    y1a = int(math.floor(y1 * (ah/float(mh))))
-                    y2a = int(math.ceil (y2 * (ah/float(mh))))
-                    x1a = int(math.floor(x1 * (aw/float(mw))))
-                    x2a = int(math.ceil (x2 * (aw/float(mw))))
-                    y1a = max(0, min(ah, y1a)); y2a = max(0, min(ah, y2a))
-                    x1a = max(0, min(aw, x1a)); x2a = max(0, min(aw, x2a))
+                    y1a = int(math.floor(y1 * (ah / float(mh))))
+                    y2a = int(math.ceil(y2 * (ah / float(mh))))
+                    x1a = int(math.floor(x1 * (aw / float(mw))))
+                    x2a = int(math.ceil(x2 * (aw / float(mw))))
+                    y1a = max(0, min(ah, y1a))
+                    y2a = max(0, min(ah, y2a))
+                    x1a = max(0, min(aw, x1a))
+                    x2a = max(0, min(aw, x2a))
                     new_mask = np.zeros((ah, aw), dtype=bool)
-                    if y2a>y1a and x2a>x1a:
+                    if y2a > y1a and x2a > x1a:
                         new_mask[y1a:y2a, x1a:x2a] = True
                     mask = new_mask
                 else:
@@ -1295,7 +1414,14 @@ class VisualizationStep(QWidget):
         dx = 0.02 * (xmax - xmin + 1e-12)
         dl = 0.02 * (lmax - lmin + 1e-12)
         dr = 0.02 * (rmax - rmin + 1e-12)
-        return (xmin - dx, xmax + dx, lmin - dl, lmax + dl, rmin - dr, rmax + dr)
+        return (
+            xmin - dx,
+            xmax + dx,
+            lmin - dl,
+            lmax + dl,
+            rmin - dr,
+            rmax + dr,
+        )
 
     # ---- Ternary helpers ----
     def _normalize_composition(self, A, B, C):
@@ -1309,7 +1435,9 @@ class VisualizationStep(QWidget):
         C = np.maximum(C, 0.0)
         S = A + B + C
         mask = S > 0.0
-        A2 = np.zeros_like(A); B2 = np.zeros_like(B); C2 = np.zeros_like(C)
+        A2 = np.zeros_like(A)
+        B2 = np.zeros_like(B)
+        C2 = np.zeros_like(C)
         A2[mask] = A[mask] / S[mask]
         B2[mask] = B[mask] / S[mask]
         C2[mask] = C[mask] / S[mask]
@@ -1317,17 +1445,27 @@ class VisualizationStep(QWidget):
 
     def _barycentric_to_cartesian(self, A, B, C):
         x = B + 0.5 * C
-        y = (math.sqrt(3)/2.0) * C
+        y = (math.sqrt(3) / 2.0) * C
         return x, y
 
     def _in_triangle(self, A, B, C, eps=1e-12):
-        return (A >= -eps) & (B >= -eps) & (C >= -eps) & (np.abs(A+B+C-1.0) <= 1e-6)
+        return (A >= -eps) & (B >= -eps) & (C >= -eps) & (np.abs(A + B + C - 1.0) <= 1e-6)
 
-    def _draw_triangle_frame(self, ax, a_label, b_label, c_label,
-                              ticks=(0.2, 0.4, 0.6, 0.8),
-                              tick_len=0.030, label_offset=0.038, show_grid=False):
+    def _draw_triangle_frame(
+        self,
+        ax,
+        a_label,
+        b_label,
+        c_label,
+        ticks=(0.2, 0.4, 0.6, 0.8),
+        tick_len=0.030,
+        label_offset=0.038,
+        show_grid=False,
+    ):
         import math as _math
+
         import numpy as _np
+
         h = _math.sqrt(3.0) / 2.0
         B = _np.array([0.0, 0.0])
         A = _np.array([1.0, 0.0])
@@ -1338,25 +1476,47 @@ class VisualizationStep(QWidget):
             sp.set_visible(False)
         ax.set_xlim(-pad, 1.0 + pad)
         ax.set_ylim(-pad, h + pad)
-        ax.set_aspect('equal', 'box')
-        ax.set_xticks([]); ax.set_yticks([])
-        ax.plot([B[0], A[0]], [B[1], A[1]], lw=1.1, color='black')
-        ax.plot([A[0], C[0]], [A[1], C[1]], lw=1.1, color='black')
-        ax.plot([B[0], C[0]], [B[1], C[1]], lw=1.1, color='black')
+        ax.set_aspect("equal", "box")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.plot([B[0], A[0]], [B[1], A[1]], lw=1.1, color="black")
+        ax.plot([A[0], C[0]], [A[1], C[1]], lw=1.1, color="black")
+        ax.plot([B[0], C[0]], [B[1], C[1]], lw=1.1, color="black")
         if show_grid:
             for t in ticks:
-                ax.plot([1-t, 0.5*(1-t)], [0, h*(1-t)], lw=0.3, alpha=0.5, color='0.6')
-                ax.plot([0.5*t, 0.5 + 0.5*(1-t)], [h*t, h*(1-t)], lw=0.3, alpha=0.5, color='0.6')
-                ax.plot([t, 1 - 0.5*t], [0, h*t], lw=0.3, alpha=0.5, color='0.6')
+                ax.plot(
+                    [1 - t, 0.5 * (1 - t)],
+                    [0, h * (1 - t)],
+                    lw=0.3,
+                    alpha=0.5,
+                    color="0.6",
+                )
+                ax.plot(
+                    [0.5 * t, 0.5 + 0.5 * (1 - t)],
+                    [h * t, h * (1 - t)],
+                    lw=0.3,
+                    alpha=0.5,
+                    color="0.6",
+                )
+                ax.plot(
+                    [t, 1 - 0.5 * t],
+                    [0, h * t],
+                    lw=0.3,
+                    alpha=0.5,
+                    color="0.6",
+                )
+
         def _unit(v):
             n = _np.linalg.norm(v)
             return v / n if n else v
+
         def _outward_normal(p, edge_vec):
             n = _np.array([-edge_vec[1], edge_vec[0]])
             n = _unit(n)
             if _np.dot(n, centroid - p) > 0:
                 n = -n
             return n
+
         def _draw_edge_ticks(P0, P1):
             d = P1 - P0
             for t in ticks:
@@ -1364,24 +1524,27 @@ class VisualizationStep(QWidget):
                 p = P0 + t * d
                 n = _outward_normal(p, d)
                 p2 = p + n * tick_len
-                ax.plot([p[0], p2[0]], [p[1], p2[1]], color='black', lw=1.0)
+                ax.plot([p[0], p2[0]], [p[1], p2[1]], color="black", lw=1.0)
                 lp = p + n * label_offset
-                ax.text(lp[0], lp[1], lbl, ha='center', va='center', fontsize=8)
+                ax.text(lp[0], lp[1], lbl, ha="center", va="center", fontsize=8)
+
         _draw_edge_ticks(B, A)
         _draw_edge_ticks(A, C)
         _draw_edge_ticks(B, C)
-        ax.text(1.02, -0.01, a_label, ha='left',  va='top',    fontsize=9)
-        ax.text(-0.02, -0.01, b_label, ha='right', va='top',   fontsize=9)
-        ax.text(0.5,  h + 0.03, c_label, ha='center', va='bottom', fontsize=9)
+        ax.text(1.02, -0.01, a_label, ha="left", va="top", fontsize=9)
+        ax.text(-0.02, -0.01, b_label, ha="right", va="top", fontsize=9)
+        ax.text(0.5, h + 0.03, c_label, ha="center", va="bottom", fontsize=9)
 
     def _robust_contour_levels(self, H, n=6):
         import numpy as _np
+
         if H is None or H.size == 0:
             return None
         pos = H[H > 0]
         if pos.size == 0:
             return None
-        vmin = float(pos.min()); vmax = float(pos.max())
+        vmin = float(pos.min())
+        vmax = float(pos.max())
         if not _np.isfinite([vmin, vmax]).all() or vmax <= vmin:
             return None
         qs = _np.linspace(0.50, 0.98, n)
@@ -1390,7 +1553,7 @@ class VisualizationStep(QWidget):
         levels = _np.clip(levels, vmin + eps, vmax - eps)
         levels = _np.unique(levels)
         if levels.size < 2:
-            levels = _np.linspace(vmin + 0.2*(vmax - vmin), vmin + 0.95*(vmax - vmin), n)
+            levels = _np.linspace(vmin + 0.2 * (vmax - vmin), vmin + 0.95 * (vmax - vmin), n)
             levels = _np.unique(levels)
         return levels if levels.size >= 2 else None
 
@@ -1399,7 +1562,6 @@ class VisualizationStep(QWidget):
     # ==========================
 
     def generate_report_pdf(self):
-        from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
         if self.roi_coordinates is None or self.roi_coordinates.empty:
             QMessageBox.warning(self, "Generate Report", "Please load/add at least one ROI.")
@@ -1411,7 +1573,7 @@ class VisualizationStep(QWidget):
             style = self.dd_style.currentText()
         if not style:
             style = "Scatter"
-        density_mode = (str(style).strip().lower() == "density")
+        density_mode = str(style).strip().lower() == "density"
 
         try:
             if plot_type == "XY plot":
@@ -1434,7 +1596,11 @@ class VisualizationStep(QWidget):
                 B = self.maps[b_name]
                 C = self.maps[c_name]
         except KeyError:
-            QMessageBox.warning(self, "Generate Report", "Please select valid map names for the chosen plot.")
+            QMessageBox.warning(
+                self,
+                "Generate Report",
+                "Please select valid map names for the chosen plot.",
+            )
             return
         except Exception as e:
             QMessageBox.critical(self, "Generate Report", f"Unexpected error: {e}")
@@ -1457,7 +1623,12 @@ class VisualizationStep(QWidget):
             c_label = _strip_ext(c_name)
 
         default_name = f"report_{plot_type.replace(' ', '_').lower()}_{style.lower()}.pdf"
-        save_path, _ = QFileDialog.getSaveFileName(self, "Save Report PDF", os.path.join(self._default_folder(), default_name), "PDF Files (*.pdf)")
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Report PDF",
+            os.path.join(self._default_folder(), default_name),
+            "PDF Files (*.pdf)",
+        )
         if not save_path:
             return
 
@@ -1476,7 +1647,7 @@ class VisualizationStep(QWidget):
 
         with PdfPages(save_path) as pdf:
             for page_start in range(0, len(rois), per_page):
-                page_rois = rois[page_start:page_start+per_page]
+                page_rois = rois[page_start : page_start + per_page]
                 try:
                     fig = plt.figure(figsize=(8.27, 11.69), constrained_layout=True)
                 except TypeError:
@@ -1487,18 +1658,18 @@ class VisualizationStep(QWidget):
                 for i, roi in enumerate(page_rois, start=1):
                     ax = fig.add_subplot(nrows, ncols, i)
                     row_idx = int(math.ceil(i / float(ncols)))
-                    is_bottom_row = (row_idx == filled_rows)
+                    is_bottom_row = row_idx == filled_rows
                     col_idx = ((i - 1) % ncols) + 1
 
                     name = str(roi.get("ROI Name", f"ROI{i}"))
                     mask = self._roi_mask(roi)
                     if mask is None:
                         ax.set_title(f"{name}\n(no background)", fontsize=9, pad=10)
-                        ax.axis('off')
+                        ax.axis("off")
                         continue
 
                     if plot_type == "XY plot":
-                        show_left = (col_idx == 1)
+                        show_left = col_idx == 1
                         self._apply_sci_left_ticks(ax, show_left)
                         if show_left:
                             ax.set_ylabel(y_label)
@@ -1515,17 +1686,31 @@ class VisualizationStep(QWidget):
                             cb = fig.colorbar(hb, ax=ax, fraction=0.046, pad=0.04)
                             cb.ax.tick_params(labelsize=7)
                         else:
-                            ax.plot(xv, yv, '.', markersize=2)
+                            ax.plot(xv, yv, ".", markersize=2)
 
                         if chosen_corr != "None" and xv.size and yv.size:
                             if chosen_corr == "Pearson":
                                 r = self._pearson_r(xv, yv)
-                                ax.text(0.02, 0.98, f"Pearson r = {r:.3f}", transform=ax.transAxes,
-                                        va='top', ha='left', fontsize=7)
+                                ax.text(
+                                    0.02,
+                                    0.98,
+                                    f"Pearson r = {r:.3f}",
+                                    transform=ax.transAxes,
+                                    va="top",
+                                    ha="left",
+                                    fontsize=7,
+                                )
                             else:
                                 r = self._spearman_r(xv, yv)
-                                ax.text(0.02, 0.98, f"Spearman s = {r:.3f}", transform=ax.transAxes,
-                                        va='top', ha='left', fontsize=7)
+                                ax.text(
+                                    0.02,
+                                    0.98,
+                                    f"Spearman s = {r:.3f}",
+                                    transform=ax.transAxes,
+                                    va="top",
+                                    ha="left",
+                                    fontsize=7,
+                                )
 
                         self._apply_sci_bottom_ticks(ax, is_bottom_row)
                         if is_bottom_row:
@@ -1533,30 +1718,31 @@ class VisualizationStep(QWidget):
                         ax.set_title(name, fontsize=9, pad=10)
 
                     elif plot_type == "Dual axis plot":
-                        show_left = (col_idx == 1)
-                        show_right = (col_idx == 3)
-                        left_color  = "#1f77b4"
+                        show_left = col_idx == 1
+                        show_right = col_idx == 3
+                        left_color = "#1f77b4"
                         right_color = "#d62728"
                         self._apply_sci_left_ticks(ax, show_left)
                         if show_left:
                             ax.set_ylabel(l_label, color=left_color)
                         else:
                             ax.set_ylabel("")
-                        ax.tick_params(axis='y', colors=left_color)
-                        if 'left' in ax.spines:
-                            ax.spines['left'].set_color(left_color)
+                        ax.tick_params(axis="y", colors=left_color)
+                        if "left" in ax.spines:
+                            ax.spines["left"].set_color(left_color)
                         ax2 = ax.twinx()
                         if show_right:
                             ax2.yaxis.set_major_locator(MaxNLocator(nbins=5, prune=None))
-                            fmty = ScalarFormatter(useMathText=True); fmty.set_powerlimits((-2, 3))
+                            fmty = ScalarFormatter(useMathText=True)
+                            fmty.set_powerlimits((-2, 3))
                             ax2.yaxis.set_major_formatter(fmty)
                             ax2.set_ylabel(r_label, color=right_color)
-                            ax2.tick_params(axis='y', labelright=True, colors=right_color)
+                            ax2.tick_params(axis="y", labelright=True, colors=right_color)
                         else:
                             ax2.set_ylabel("")
-                            ax2.tick_params(axis='y', labelright=False, colors=right_color)
-                        if 'right' in ax2.spines:
-                            ax2.spines['right'].set_color(right_color)
+                            ax2.tick_params(axis="y", labelright=False, colors=right_color)
+                        if "right" in ax2.spines:
+                            ax2.spines["right"].set_color(right_color)
 
                         xv = self._flatten_roi(XB, mask)
                         lv = self._flatten_roi(XL, mask)
@@ -1584,65 +1770,106 @@ class VisualizationStep(QWidget):
                         ax2.set_xlim(xmin, xmax)
 
                         if density_mode:
-                            from mpl_toolkits.axes_grid1.inset_locator import inset_axes as _inset_axes
+                            from mpl_toolkits.axes_grid1.inset_locator import (
+                                inset_axes as _inset_axes,
+                            )
+
                             ax.patch.set_alpha(0.0)
                             ax2.patch.set_alpha(0.0)
                             hb_left = ax.hexbin(
-                                xv, lv, gridsize=32, mincnt=1, cmap="viridis",
-                                linewidths=0, alpha=0.90
+                                xv,
+                                lv,
+                                gridsize=32,
+                                mincnt=1,
+                                cmap="viridis",
+                                linewidths=0,
+                                alpha=0.90,
                             )
-                            x_bins = 40; y_bins = 40
+                            x_bins = 40
+                            y_bins = 40
                             cs = None
                             if xv.size and rv.size:
                                 H, xedges, yedges = np.histogram2d(
-                                    xv, rv, bins=[x_bins, y_bins],
-                                    range=[[xmin, xmax], [rmin, rmax]]
+                                    xv,
+                                    rv,
+                                    bins=[x_bins, y_bins],
+                                    range=[[xmin, xmax], [rmin, rmax]],
                                 )
                                 xc = 0.5 * (xedges[:-1] + xedges[1:])
                                 yc = 0.5 * (yedges[:-1] + yedges[1:])
-                                Xc, Yc = np.meshgrid(xc, yc, indexing='xy')
+                                Xc, Yc = np.meshgrid(xc, yc, indexing="xy")
                                 denom = (rmax - rmin) if (rmax - rmin) != 0 else 1.0
                                 Yc_left = lmin + (Yc - rmin) * (lmax - lmin) / denom
                                 levels = self._robust_contour_levels(H, n=6)
                                 if levels is not None:
                                     cs = ax.contour(
-                                        Xc, Yc_left, H.T, levels=levels,
-                                        cmap="magma", linewidths=1.0, alpha=0.95
+                                        Xc,
+                                        Yc_left,
+                                        H.T,
+                                        levels=levels,
+                                        cmap="magma",
+                                        linewidths=1.0,
+                                        alpha=0.95,
                                     )
                             caxL = _inset_axes(
-                                ax, width="3.0%", height="85%", loc="center left",
-                                bbox_to_anchor=(1.02, 0.0, 1, 1), bbox_transform=ax.transAxes, borderpad=0
+                                ax,
+                                width="3.0%",
+                                height="85%",
+                                loc="center left",
+                                bbox_to_anchor=(1.02, 0.0, 1, 1),
+                                bbox_transform=ax.transAxes,
+                                borderpad=0,
                             )
                             caxR = _inset_axes(
-                                ax, width="3.0%", height="85%", loc="center left",
-                                bbox_to_anchor=(1.06, 0.0, 1, 1), bbox_transform=ax.transAxes, borderpad=0
+                                ax,
+                                width="3.0%",
+                                height="85%",
+                                loc="center left",
+                                bbox_to_anchor=(1.06, 0.0, 1, 1),
+                                bbox_transform=ax.transAxes,
+                                borderpad=0,
                             )
-                            cbL = fig.colorbar(hb_left,  cax=caxL); cbL.set_label(l_label, fontsize=7)
+                            cbL = fig.colorbar(hb_left, cax=caxL)
+                            cbL.set_label(l_label, fontsize=7)
                             if cs is not None:
                                 cbR = fig.colorbar(cs, cax=caxR)
                             else:
-                                from matplotlib.cm import ScalarMappable
                                 import matplotlib as mpl
-                                dummy = ScalarMappable(norm=mpl.colors.Normalize(0, 1), cmap="magma")
+                                from matplotlib.cm import ScalarMappable
+
+                                dummy = ScalarMappable(
+                                    norm=mpl.colors.Normalize(0, 1),
+                                    cmap="magma",
+                                )
                                 cbR = fig.colorbar(dummy, cax=caxR)
                             cbR.set_label(r_label, fontsize=7)
-                            cbL.ax.tick_params(labelsize=7); cbL.set_label(l_label, fontsize=7)
-                            cbR.ax.tick_params(labelsize=7); cbR.set_label(r_label, fontsize=7)
+                            cbL.ax.tick_params(labelsize=7)
+                            cbL.set_label(l_label, fontsize=7)
+                            cbR.ax.tick_params(labelsize=7)
+                            cbR.set_label(r_label, fontsize=7)
                         else:
-                            ax.plot(xv, lv, '.', markersize=2, color="#1f77b4")
-                            ax2.plot(xv, rv, '.', markersize=2, color="#d62728")
+                            ax.plot(xv, lv, ".", markersize=2, color="#1f77b4")
+                            ax2.plot(xv, rv, ".", markersize=2, color="#d62728")
                             if chosen_corr != "None" and xv.size:
                                 if chosen_corr == "Pearson":
                                     r_pr = self._pearson_r(xv, rv) if rv.size else np.nan
                                     r_pl = self._pearson_r(xv, lv) if lv.size else np.nan
-                                    txt = (f"Pearson ({r_label}) r = {r_pr:.3f}\n"
-                                           f"Pearson ({l_label}) r = {r_pl:.3f}")
+                                    txt = f"Pearson ({r_label}) r = {r_pr:.3f}\n" f"Pearson ({l_label}) r = {r_pl:.3f}"
                                 else:
                                     r_sr = self._spearman_r(xv, rv) if rv.size else np.nan
                                     r_sl = self._spearman_r(xv, lv) if lv.size else np.nan
-                                    txt = (f"Spearman ({r_label}) s = {r_sr:.3f}\n"
-                                           f"Spearman ({l_label}) s = {r_sl:.3f}")
-                                ax.text(0.02, 0.98, txt, transform=ax.transAxes, va='top', ha='left', fontsize=7)
+                                    txt = (
+                                        f"Spearman ({r_label}) s = {r_sr:.3f}\n" f"Spearman ({l_label}) s = {r_sl:.3f}"
+                                    )
+                                ax.text(
+                                    0.02,
+                                    0.98,
+                                    txt,
+                                    transform=ax.transAxes,
+                                    va="top",
+                                    ha="left",
+                                    fontsize=7,
+                                )
                         self._apply_sci_bottom_ticks(ax, is_bottom_row)
                         if is_bottom_row:
                             ax.set_xlabel(b_label)
@@ -1657,7 +1884,8 @@ class VisualizationStep(QWidget):
                         if valid.any():
                             x, y = self._barycentric_to_cartesian(A2, B2, C2)
                             keep = self._in_triangle(A2, B2, C2)
-                            x = x[keep]; y = y[keep]
+                            x = x[keep]
+                            y = y[keep]
                         else:
                             x = y = np.array([])
                         if x.size:
@@ -1672,7 +1900,14 @@ class VisualizationStep(QWidget):
                 try:
                     fig.set_constrained_layout_pads(w_pad=0.02, h_pad=0.02, wspace=0.02, hspace=0.02)
                 except Exception:
-                    fig.subplots_adjust(left=0.07, right=0.93, top=0.96, bottom=0.07, wspace=0.30, hspace=0.40)
+                    fig.subplots_adjust(
+                        left=0.07,
+                        right=0.93,
+                        top=0.96,
+                        bottom=0.07,
+                        wspace=0.30,
+                        hspace=0.40,
+                    )
                 pdf.savefig(fig)
                 plt.close(fig)
 
@@ -1682,7 +1917,7 @@ class VisualizationStep(QWidget):
     # ---------- Ticks helpers ----------
     def _apply_sci_bottom_ticks(self, ax, is_bottom_row: bool):
         if not is_bottom_row:
-            ax.tick_params(axis='x', labelbottom=False)
+            ax.tick_params(axis="x", labelbottom=False)
         else:
             ax.xaxis.set_major_locator(MaxNLocator(nbins=5, prune=None))
             fmt = ScalarFormatter(useMathText=True)
@@ -1691,7 +1926,7 @@ class VisualizationStep(QWidget):
 
     def _apply_sci_left_ticks(self, ax, show_left: bool):
         if not show_left:
-            ax.tick_params(axis='y', labelleft=False)
+            ax.tick_params(axis="y", labelleft=False)
         else:
             ax.yaxis.set_major_locator(MaxNLocator(nbins=5, prune=None))
             fmty = ScalarFormatter(useMathText=True)

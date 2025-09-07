@@ -6,8 +6,15 @@ import re
 
 import h5py
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
 import openpyxl
+from matplotlib.backends.backend_qt5agg import (
+    FigureCanvasQTAgg as FigureCanvas,
+)
+from matplotlib.figure import Figure
+from matplotlib.path import Path
+from matplotlib.widgets import LassoSelector, RectangleSelector
 from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
 from PyQt5.QtWidgets import (
     QApplication,
@@ -37,17 +44,13 @@ mpl.use("Qt5Agg")
 mpl.rcParams["agg.path.chunksize"] = 20000  # speed up long paths
 mpl.rcParams["path.simplify"] = True
 mpl.rcParams["path.simplify_threshold"] = 0.3
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-from matplotlib.path import Path
-from matplotlib.widgets import LassoSelector, RectangleSelector
 
 plt.rcParams["font.family"] = "Times New Roman"
 
 
 def _make_lasso_selector(ax, onselect):
-    """Create a LassoSelector with a GREEN line across Matplotlib versions."""
+    """Create a LassoSelector with a GREEN line across Matplotlib
+    versions."""
     props = {"color": "green", "linewidth": 1.5, "alpha": 0.9}
     sig = inspect.signature(LassoSelector.__init__)
     if "props" in sig.parameters:
@@ -90,7 +93,10 @@ def _estimate_sigma_from_counts(arr, scale=1.0):
 
 
 def _debounce(self, attr, fn, ms=40):
-    """Call fn() once after ms; collapse bursts. attr is a string timer name."""
+    """Call fn() once after ms; collapse bursts.
+
+    attr is a string timer name.
+    """
     t = getattr(self, attr, None)
     if t is None:
         t = QTimer(self)
@@ -104,9 +110,8 @@ def _debounce(self, attr, fn, ms=40):
 # Data loading thread
 # -----------------------------
 class DataLoader(QThread):
-    """DataLoader class.
+    """DataLoader class."""
 
-    """
     data_loaded = pyqtSignal(list, list)
 
     def __init__(self, data_path=None):
@@ -116,13 +121,14 @@ class DataLoader(QThread):
         if not os.path.isabs(self.data_path):
             # resolve relative paths into the working folder chosen in main.py
             self.data_path = os.path.abspath(
-                os.path.join(self.working_dir or os.getcwd(), os.path.basename(self.data_path))
+                os.path.join(
+                    self.working_dir or os.getcwd(),
+                    os.path.basename(self.data_path),
+                )
             )
 
     def run(self):
-        """Run.
-    
-        """
+        """Run."""
         try:
             file_path = self.data_path or "data.h5"
             data_list, image_list = [], []
@@ -137,6 +143,7 @@ class DataLoader(QThread):
             self.data_loaded.emit(data_list, image_list)
         except Exception:
             self.data_loaded.emit([], [])
+
     """SelectionManager class.
 
     """
@@ -147,34 +154,27 @@ class SelectionManager(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        """Clear.
-    
-        """
+        """Clear."""
         self._indices = set()
 
         """Set.
-    
+
         """
+
     def clear(self, quiet=False):
-        """Add.
-    
-        """
+        """Add."""
         self._indices.clear()
         if not quiet:
             self.selection_changed.emit(set())
         """Remove.
-    
+
         """
 
     def set(self, indices):
         self._indices = set(indices) if indices else set()
         self.selection_changed.emit(set(self._indices))
-        """Has any.
-    
-        """
-        """Get.
-    
-        """
+        """Has any."""
+        """Get."""
 
     def add(self, indices):
         before = set(self._indices)
@@ -194,6 +194,7 @@ class SelectionManager(QObject):
 
     def get(self):
         return set(self._indices)
+
     """BasePlotWidget class.
 
     """
@@ -215,12 +216,13 @@ class BasePlotWidget(FigureCanvas):
         except Exception:
             pass
 
-
-# -----------------------------
-# Element map panel (single channel)
+        # -----------------------------
+        # Element map panel (single channel)
         """Set data.
-    
+
         """
+
+
 # -----------------------------
 class ElementMapView(BasePlotWidget):
     roi_selected = pyqtSignal(tuple)  # (x1, y1, x2, y2)
@@ -245,9 +247,7 @@ class ElementMapView(BasePlotWidget):
         self.data = data
         self.offset = offset
         self.ax.clear()
-        """Set highlight visible.
-    
-        """
+        """Set highlight visible."""
         if data is None or data.size == 0:
             self.ax.set_title(title or self.title or "")
             _debounce(self, "_draw_timer", self.draw_idle, ms=40)
@@ -268,10 +268,16 @@ class ElementMapView(BasePlotWidget):
     def _ensure_hl_artist(self):
         if self._hl_scatter is None or getattr(self._hl_scatter, "axes", None) is None:
             self._hl_scatter = self.ax.scatter(
-                [], [], s=18, facecolors="none", edgecolors="yellow", linewidths=1.0, zorder=6
+                [],
+                [],
+                s=18,
+                facecolors="none",
+                edgecolors="yellow",
+                linewidths=1.0,
+                zorder=6,
             )
         """Set highlight points.
-    
+
         """
 
     def set_highlight_visible(self, flag: bool):
@@ -289,7 +295,7 @@ class ElementMapView(BasePlotWidget):
         xs, ys = [], []
         for x, y in self._last_highlight or []:
             lx, ly = x - ox, y - oy
-            if 0 <= lx < W and 0 <= ly < H:
+            if 0 <= lx < w and 0 <= ly < h:
                 xs.append(lx)
                 ys.append(ly)
         if xs:
@@ -299,7 +305,7 @@ class ElementMapView(BasePlotWidget):
             self._hl_scatter.set_offsets(np.empty((0, 2)))
             self._hl_scatter.set_visible(False)
         """Set roi enabled.
-    
+
         """
 
     def set_highlight_points(self, coords_xy_list):
@@ -310,9 +316,7 @@ class ElementMapView(BasePlotWidget):
     # ---------- Live cursor arrow ----------
     def _ensure_cursor(self):
         if self._cursor_mk is None or getattr(self._cursor_mk, "axes", None) is None:
-            (self._cursor_mk,) = self.ax.plot(
-                [], [], marker="^", linestyle="None", markersize=6, zorder=7
-            )
+            (self._cursor_mk,) = self.ax.plot([], [], marker="^", linestyle="None", markersize=6, zorder=7)
 
     def set_cursor_point(self, x, y):
         if self.data is None:
@@ -321,7 +325,7 @@ class ElementMapView(BasePlotWidget):
         ox, oy = self.offset
         lx, ly = x - ox, y - oy
         h, w = self.data.shape[:2]
-        if 0 <= lx < W and 0 <= ly < H:
+        if 0 <= lx < w and 0 <= ly < h:
             self._cursor_mk.set_data([lx], [ly])
             self._cursor_mk.set_visible(True)
         else:
@@ -355,9 +359,7 @@ class ElementMapView(BasePlotWidget):
             return
         x1, y1 = int(eclick.xdata), int(eclick.ydata)
         x2, y2 = int(erelease.xdata), int(erelease.ydata)
-        """Set highlight indices.
-    
-        """
+        """Set highlight indices."""
         self.roi_selected.emit((x1, y1, x2, y2))
 
     def _connect_mouse(self):
@@ -397,9 +399,8 @@ class ElementMapView(BasePlotWidget):
             self.line_selected.emit((int(x0), int(y0), int(x1), int(y1)))
 
     def set_highlight_indices(self, indices, full_shape=None):
-        """Accept a set of FULL-image flat indices and reuse the existing
-        set_highlight_points([(x,y), ...]) overlay.
-        """
+        """Accept a set of FULL-image flat indices and reuse the
+        existing set_highlight_points([(x,y), ...]) overlay."""
         if not indices:
             self.set_highlight_points([])
             return
@@ -414,7 +415,7 @@ class ElementMapView(BasePlotWidget):
             if parent is not None and hasattr(parent, "maps_shape"):
                 H_full, W_full = parent.maps_shape
         """Combine.
-    
+
         """
 
         if not H_full or not W_full:
@@ -423,9 +424,7 @@ class ElementMapView(BasePlotWidget):
 
         # Convert flat -> (x,y)
         pts = []
-        """Set data.
-    
-        """
+        """Set data."""
         for i in indices:
             i = int(i)
             if 0 <= i < H_full * W_full:
@@ -472,9 +471,7 @@ class RGBMapView(ElementMapView):
         self.offset = offset
         self.ax.clear()
         rgb = self.combine(r, g, b, br, bg, bb)
-        """Set data.
-    
-        """
+        """Set data."""
         self.im = self.ax.imshow(rgb)
         if names and len(names) >= 3:
             self.ax.set_title(f"{names[0]}-{names[1]}-{names[2]} (RGB) Map")
@@ -498,7 +495,7 @@ class RGBMapView(ElementMapView):
         xs, ys = [], []
         for x, y in self._last_highlight or []:
             lx, ly = x - ox, y - oy
-            if 0 <= lx < W and 0 <= ly < H:
+            if 0 <= lx < w and 0 <= ly < h:
                 xs.append(lx)
                 ys.append(ly)
         if xs:
@@ -547,8 +544,8 @@ class GrayImageView(ElementMapView):
 # -----------------------------
 
 
-
-# Matplotlib imports are placed inside methods where possible to avoid early backend binding
+# Matplotlib imports are placed inside methods where possible to avoid
+# early backend binding
 
 
 class TernaryDialog(QDialog):
@@ -567,10 +564,13 @@ class TernaryDialog(QDialog):
 
         # Data backing the scatter currently shown
         self._xy = None  # (N,2) plotted coords in ternary axes
-        self._flat_indices = None  # (N,) indices mapping to *full-image* flat indices (preferred)
+        # (N,) indices mapping to *full-image* flat indices (preferred)
+        self._flat_indices = None
         self._flat_indices_full = None  # if you prefer to keep explicit FULL-flat here
-        self._roi_shape = None  # (H_roi, W_roi) ROI shape (for legacy conversion)
-        self._roi_origin = (0, 0)  # (x0,y0) top-left of ROI in FULL image (legacy)
+        # (H_roi, W_roi) ROI shape (for legacy conversion)
+        self._roi_shape = None
+        # (x0,y0) top-left of ROI in FULL image (legacy)
+        self._roi_origin = (0, 0)
         self._triangle_path = None
 
         # Selection & overlays
@@ -579,9 +579,7 @@ class TernaryDialog(QDialog):
 
         self._sel_mask = None  # boolean mask over self._xy
         self._sel_scatter = None  # overlay for selected points (ternary axes)
-        """Set labels.
-    
-        """
+        """Set labels."""
 
         # “ElementMapView”-style highlight overlay (optional second overlay)
         self._hl_scatter = None
@@ -602,12 +600,16 @@ class TernaryDialog(QDialog):
         from matplotlib.figure import Figure
 
         """Update points.
-    
+
         """
         try:
-            from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+            from matplotlib.backends.backend_qt5agg import (
+                FigureCanvasQTAgg as FigureCanvas,
+            )
         except Exception:
-            from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+            from matplotlib.backends.backend_qtagg import (
+                FigureCanvasQTAgg as FigureCanvas,
+            )
 
         if self.fig is None:
             self.fig = Figure(figsize=(4, 4), tight_layout=True)
@@ -632,9 +634,30 @@ class TernaryDialog(QDialog):
         self.ax.set_xlim(-0.05, 1.05)
         self.ax.set_ylim(-0.05, math.sqrt(3) / 2.0 + 0.05)
 
-        self.ax.text(A[0], A[1] + 0.04, self._labels[0], ha="center", va="bottom", fontsize=10)
-        self.ax.text(B[0] - 0.02, B[1] - 0.02, self._labels[1], ha="right", va="top", fontsize=10)
-        self.ax.text(C[0] + 0.02, C[1] - 0.02, self._labels[2], ha="left", va="top", fontsize=10)
+        self.ax.text(
+            A[0],
+            A[1] + 0.04,
+            self._labels[0],
+            ha="center",
+            va="bottom",
+            fontsize=10,
+        )
+        self.ax.text(
+            B[0] - 0.02,
+            B[1] - 0.02,
+            self._labels[1],
+            ha="right",
+            va="top",
+            fontsize=10,
+        )
+        self.ax.text(
+            C[0] + 0.02,
+            C[1] - 0.02,
+            self._labels[2],
+            ha="left",
+            va="top",
+            fontsize=10,
+        )
         self.ax.set_title("Triangular Plot")
 
         # boundary path for containment checks
@@ -663,15 +686,15 @@ class TernaryDialog(QDialog):
         if self._sel_mask is None or self._sel_mask.shape != (n,):
             self._sel_mask = np.zeros((n,), dtype=bool)
 
-    def update_points(self, a, b, c, roi_shape=None, roi_origin=(0, 0), flat_indices_full=None):
-        """Prepare and plot ternary points from three arrays (a, b, c).
-        Steps:
-          1) per-channel minmax over current view
-          2) per-pixel normalize to proportions (sum=1)
-          3) produce XY, filter to triangle, draw scatter
-        Provide flat_indices_full=(N,) if you have FULL-image flat indices for each pixel.
-        Otherwise we’ll derive ROI-flat and you should keep conversion in the parent.
-        """
+    def update_points(
+        self,
+        a,
+        b,
+        c,
+        roi_shape=None,
+        roi_origin=(0, 0),
+        flat_indices_full=None,
+    ):
         self._ensure_canvas_axes()
         self._setup_axes()
 
@@ -724,18 +747,14 @@ class TernaryDialog(QDialog):
         idx_all = np.arange(n)
         idx_kept = idx_all[finite_mask][pos_mask]
         self._flat_indices = idx_kept.copy()  # by default store "ROI-flat" (0..n-1 of this view)
-        """Set highlight visible.
-    
-        """
+        """Set highlight visible."""
         self._flat_indices_full = None
         if flat_indices_full is not None:
             flat_indices_full = np.asarray(flat_indices_full, dtype=np.int64)
             self._flat_indices_full = flat_indices_full[finite_mask][pos_mask]
 
         # Cartesian coords in ternary
-        xy = np.array(
-            [self._to_cartesian(ai, bi, ci) for ai, bi, ci in zip(af, bf, cf, strict=False)]
-        )
+        xy = np.array([self._to_cartesian(ai, bi, ci) for ai, bi, ci in zip(af, bf, cf, strict=False)])
 
         # Keep only those inside triangle
         if self._triangle_path is not None:
@@ -756,7 +775,7 @@ class TernaryDialog(QDialog):
 
         # Reset selection mask and overlays
         """Highlight from fullimg points.
-    
+
         """
         self._sel_mask = None
         self._ensure_sel_artist()
@@ -767,7 +786,13 @@ class TernaryDialog(QDialog):
     def _ensure_sel_artist(self):
         if self._sel_scatter is None or getattr(self._sel_scatter, "axes", None) is None:
             self._sel_scatter = self.ax.scatter(
-                [], [], s=12, facecolors="none", edgecolors="k", linewidths=1.0, zorder=6
+                [],
+                [],
+                s=12,
+                facecolors="none",
+                edgecolors="k",
+                linewidths=1.0,
+                zorder=6,
             )
 
     def _update_local_selection_overlay(self):
@@ -790,7 +815,13 @@ class TernaryDialog(QDialog):
     def _ensure_hl_artist(self):
         if self._hl_scatter is None or getattr(self._hl_scatter, "axes", None) is None:
             self._hl_scatter = self.ax.scatter(
-                [], [], s=18, facecolors="none", edgecolors="yellow", linewidths=1.0, zorder=7
+                [],
+                [],
+                s=18,
+                facecolors="none",
+                edgecolors="yellow",
+                linewidths=1.0,
+                zorder=7,
             )
             self._hl_visible = True
             self._last_highlight_xy = []
@@ -813,18 +844,18 @@ class TernaryDialog(QDialog):
         self.canvas.draw_idle()
 
     def set_highlight_points(self, coords_xy_list):
-        """Directly set highlight points in ternary axes (for external sync)."""
+        """Directly set highlight points in ternary axes (for external
+        sync)."""
         self._last_highlight_xy = coords_xy_list or []
         self._update_hl_artist()
 
     def highlight_from_fullimg_indices(self, idxs_full: set, parent=None):
-        """Overlay (externally) from a set of FULL-image flat indices."""
+        """Overlay (externally) from a set of FULL-image flat
+        indices."""
         if self._xy is None or (self._flat_indices is None and self._flat_indices_full is None):
             self.set_highlight_points([])
             return
-        flat = (
-            self._flat_indices_full if self._flat_indices_full is not None else self._flat_indices
-        )
+        flat = self._flat_indices_full if self._flat_indices_full is not None else self._flat_indices
         if not idxs_full or flat is None:
             self.set_highlight_points([])
             return
@@ -839,16 +870,12 @@ class TernaryDialog(QDialog):
             return
         if parent is None:
             parent = self._owner
-        H_full, W_full = (
-            getattr(parent, "maps_shape", (None, None)) if parent is not None else (None, None)
-        )
+        H_full, W_full = getattr(parent, "maps_shape", (None, None)) if parent is not None else (None, None)
         if not H_full or not W_full:
             self.set_highlight_points([])
             return
         idxs_full = {
-            int(y) * int(W_full) + int(x)
-            for (x, y) in full_coords
-            if 0 <= int(x) < W_full and 0 <= int(y) < H_full
+            int(y) * int(W_full) + int(x) for (x, y) in full_coords if 0 <= int(x) < W_full and 0 <= int(y) < H_full
         }
         self.highlight_from_fullimg_indices(idxs_full, parent=parent)
 
@@ -910,15 +937,14 @@ class TernaryDialog(QDialog):
             H_roi, W_roi = self._roi_shape
             rows, cols = np.unravel_index(sel_roi_flat, (H_roi, W_roi))
             x0, y0 = self._roi_origin
-            full_coords = [
-                (int(x0 + int(c)), int(y0 + int(r))) for r, c in zip(rows, cols, strict=False)
-            ]
+            full_coords = [(int(x0 + int(c)), int(y0 + int(r))) for r, c in zip(rows, cols, strict=False)]
             # need full-flat for downstream
             owner = self._owner
             H_full, W_full = getattr(owner, "maps_shape", (None, None)) if owner else (None, None)
             if H_full and W_full:
                 sel_full_flat = np.array(
-                    [int(y) * int(W_full) + int(x) for (x, y) in full_coords], dtype=np.int64
+                    [int(y) * int(W_full) + int(x) for (x, y) in full_coords],
+                    dtype=np.int64,
                 )
             else:
                 sel_full_flat = np.array([], dtype=np.int64)
@@ -957,15 +983,9 @@ class TernaryDialog(QDialog):
             # If we have coords, emit them; else derive quickly for listeners
 
             emit_coords = full_coords
-            """Ranks.
-        
-            """
+            """Ranks."""
             if emit_coords is None and sel_full_flat.size > 0:
-                Hf, Wf = (
-                    getattr(self._owner, "maps_shape", (None, None))
-                    if self._owner
-                    else (None, None)
-                )
+                Hf, Wf = getattr(self._owner, "maps_shape", (None, None)) if self._owner else (None, None)
                 if Hf and Wf:
                     ys, xs = np.divmod(sel_full_flat, Wf)
                     emit_coords = list(zip(xs.tolist(), ys.tolist(), strict=False))
@@ -1003,6 +1023,7 @@ class ScatterView(BasePlotWidget):
     @staticmethod
     def _pearson_with_ci(x, y):
         """Pearson r and 95% CI via Fisher z-transform.
+
         Returns (r, lo, hi, n).
         """
         x = np.asarray(x)
@@ -1015,9 +1036,7 @@ class ScatterView(BasePlotWidget):
             return (np.nan, np.nan, np.nan, n)
         # center
         x0 = x - x.mean()
-        """Set data.
-    
-        """
+        """Set data."""
         y0 = y - y.mean()
         denom = np.sqrt(np.sum(x0 * x0) * np.sum(y0 * y0))
         r = np.sum(x0 * y0) / denom if denom != 0 else np.nan
@@ -1032,7 +1051,8 @@ class ScatterView(BasePlotWidget):
 
     @staticmethod
     def _spearman_rho(x, y):
-        """Spearman correlation (Pearson of ranks), no ties correction beyond average ranks."""
+        """Spearman correlation (Pearson of ranks), no ties correction
+        beyond average ranks."""
         x = np.asarray(x)
         y = np.asarray(y)
         mask = np.isfinite(x) & np.isfinite(y)
@@ -1068,43 +1088,10 @@ class ScatterView(BasePlotWidget):
         denom = np.sqrt(np.sum(rx * rx) * np.sum(ry * ry))
         return (np.sum(rx * ry) / denom) if denom != 0 else np.nan
 
-    def _render_stats_box(self):
-        if self._x_flat is None or self._y_flat is None:
-            return
-        r, lo, hi, n = self._pearson_with_ci(self._x_flat, self._y_flat)
-        rho = self._spearman_rho(self._x_flat, self._y_flat)
-
-        txt = []
-        txt.append(f"n = {n}")
-        if np.isfinite(r):
-            txt.append(f"Pearson r = {r:.3f}  (95% CI: {lo:.3f}–{hi:.3f})")
-        else:
-            txt.append("Pearson r = NA")
-        if np.isfinite(rho):
-            txt.append(f"Spearman ρ = {rho:.3f}")
-        else:
-            txt.append("Spearman ρ = NA")
-
-        text = "\n".join(txt)
-        if self._stats_box is None or getattr(self._stats_box, "axes", None) is None:
-            self._stats_box = self.ax.text(
-                0.02,
-                0.98,
-                text,
-                transform=self.ax.transAxes,
-                ha="left",
-                va="top",
-                fontsize=9,
-                bbox=dict(boxstyle="round", facecolor="white", alpha=0.6, linewidth=0.5),
-                zorder=8,
-            )
-        else:
-            self._stats_box.set_text(text)
-
     def set_data(self, x_arr, y_arr, xlabel="X", ylabel="Y", remember_limits=False):
-        """Load data into the scatter view, build the finite mask, store flattened vectors,
-        sync per-pixel uncertainties (σ) to the same mask, and redraw.
-        """
+        """Load data into the scatter view, build the finite mask, store
+        flattened vectors, sync per-pixel uncertainties (σ) to the same
+        mask, and redraw."""
         # Ensure attrs exist
         if not hasattr(self, "_scat"):
             self._scat = None
@@ -1123,7 +1110,7 @@ class ScatterView(BasePlotWidget):
         if not hasattr(self, "_mc_enabled"):
             self._mc_enabled = False
         """Enable lasso.
-    
+
         """
         if not hasattr(self, "_mc_iters"):
             self._mc_iters = 1000
@@ -1234,7 +1221,13 @@ class ScatterView(BasePlotWidget):
         # ensure selection overlay exists
         if self._sel_scatter is None or getattr(self._sel_scatter, "axes", None) is None:
             self._sel_scatter = self.ax.scatter(
-                [], [], s=12, facecolors="none", edgecolors="k", linewidths=1.0, zorder=6
+                [],
+                [],
+                s=12,
+                facecolors="none",
+                edgecolors="k",
+                linewidths=1.0,
+                zorder=6,
             )
 
         if idxs.size:
@@ -1252,14 +1245,22 @@ class ScatterView(BasePlotWidget):
         self.selection_made.emit(coords)
 
     def set_highlight_indices(self, indices):
-        """Accept a set of FULL-image flat indices and draw them highlighted on the
-        current scatter (which shows only a subset). We map FULL → subset positions.
+        """Accept a set of FULL-image flat indices and draw them
+        highlighted on the current scatter (which shows only a subset).
+
+        We map FULL → subset positions.
         """
         if self._x_flat is None or self._y_flat is None or self._flat_indices is None:
             return
         if self._sel_scatter is None or getattr(self._sel_scatter, "axes", None) is None:
             self._sel_scatter = self.ax.scatter(
-                [], [], s=12, facecolors="none", edgecolors="k", linewidths=1.0, zorder=6
+                [],
+                [],
+                s=12,
+                facecolors="none",
+                edgecolors="k",
+                linewidths=1.0,
+                zorder=6,
             )
         if not indices:
             self._sel_scatter.set_offsets(np.empty((0, 2)))
@@ -1267,7 +1268,8 @@ class ScatterView(BasePlotWidget):
             _debounce(self, "_draw_timer", self.draw_idle, ms=40)
             return
 
-        # NEW: convert provided FULL-image flat indices → positions in current subset
+        # NEW: convert provided FULL-image flat indices → positions in current
+        # subset
         want = np.fromiter((int(i) for i in indices), dtype=np.int64)
         if want.size == 0:
             self._sel_scatter.set_offsets(np.empty((0, 2)))
@@ -1275,8 +1277,6 @@ class ScatterView(BasePlotWidget):
             _debounce(self, "_draw_timer", self.draw_idle, ms=40)
             return
 
-        # Find where self._flat_indices (subset) matches the desired FULL indices
-        # This returns subset positions to index _x_flat/_y_flat
         mask_in_subset = np.isin(self._flat_indices, want)
         idxs_subset = np.nonzero(mask_in_subset)[0]
 
@@ -1291,16 +1291,14 @@ class ScatterView(BasePlotWidget):
         _debounce(self, "_draw_timer", self.draw_idle, ms=40)
 
     def set_uncertainty(self, sx, sy):
-        """Store full-resolution σ arrays, then derive σ_flat if mapping exists."""
         self._sx_full = None if sx is None else np.asarray(sx, dtype=float)
         self._sy_full = None if sy is None else np.asarray(sy, dtype=float)
         self._sx_flat = None
         self._sy_flat = None
         self._mc_cache = None
-        self._sync_sigma_flat()  # try to produce flats immediately
+        self._sync_sigma_flat()
 
     def _sync_sigma_flat(self):
-        """Create σ_flat arrays aligned to _x_flat/_y_flat using _flat_indices."""
         if (self._flat_indices is None) or (self._sx_full is None) or (self._sy_full is None):
             return
         # Accept either 2D (H,W) or already-flat matching the full image size
@@ -1317,7 +1315,8 @@ class ScatterView(BasePlotWidget):
             self._sy_flat = None
 
     def enable_mc(self, enabled: bool, iters: int = None):
-        """Enable/disable Monte Carlo propagation, optionally update iterations."""
+        """Enable/disable Monte Carlo propagation, optionally update
+        iterations."""
         self._mc_enabled = bool(enabled)
         if iters is not None:
             try:
@@ -1342,9 +1341,20 @@ class ScatterView(BasePlotWidget):
         return (x0 * y0).sum() / denom if denom > 0 else np.nan
 
     def _mc_pearson(
-        self, x, y, sx, sy, iters=1000, seed=123, chunk=250, stop_eps=0.01, min_iters=400
+        self,
+        x,
+        y,
+        sx,
+        sy,
+        iters=1000,
+        seed=123,
+        chunk=250,
+        stop_eps=0.01,
+        min_iters=400,
     ):
-        """Chunked MC Pearson; stops early when CI half-width < stop_eps.
+        """Chunked MC Pearson; stops early when CI half-width <
+        stop_eps.
+
         Memory-light: holds only one (N, chunk) at a time.
         """
         rng = np.random.default_rng(seed)
@@ -1390,13 +1400,48 @@ class ScatterView(BasePlotWidget):
         lo, hi = np.percentile(rr, [2.5, 97.5])
         return float(rr.mean()), float(lo), float(hi)
 
+    # def _render_stats_box(self):
+    #     if self._x_flat is None or self._y_flat is None:
+    #         return
+    #     r, lo, hi, n = self._pearson_with_ci(self._x_flat, self._y_flat)
+    #     rho = self._spearman_rho(self._x_flat, self._y_flat)
+
+    #     txt = []
+    #     txt.append(f"n = {n}")
+    #     if np.isfinite(r):
+    #         txt.append(f"Pearson r = {r:.3f}  (95% CI: {lo:.3f}–{hi:.3f})")
+    #     else:
+    #         txt.append("Pearson r = NA")
+    #     if np.isfinite(rho):
+    #         txt.append(f"Spearman ρ = {rho:.3f}")
+    #     else:
+    #         txt.append("Spearman ρ = NA")
+
+    #     text = "\n".join(txt)
+    #     if (
+    #         self._stats_box is None
+    #         or getattr(self._stats_box, "axes", None) is None
+    #     ):
+    #         self._stats_box = self.ax.text(
+    #             0.02,
+    #             0.98,
+    #             text,
+    #             transform=self.ax.transAxes,
+    #             ha="left",
+    #             va="top",
+    #             fontsize=9,
+    #             bbox=dict(
+    #                 boxstyle="round",
+    #                 facecolor="white",
+    #                 alpha=0.6,
+    #                 linewidth=0.5,
+    #             ),
+    #             zorder=8,
+    #         )
+    #     else:
+    #         self._stats_box.set_text(text)
+
     def _render_stats_box(self):
-        """Compute and display correlation statistics in the top-left of the scatter:
-        - Pearson r with Fisher 95% CI (classical; ignores σ)
-        - Spearman ρ (rank correlation)
-        - Weighted Pearson r_w (uses σ if available)
-        - MC Pearson r with 95% interval (if MC enabled & σ available)
-        """
         if not hasattr(self, "_x_flat") or self._x_flat is None or self._x_flat.size < 2:
             text = "n = 0"
             if self._stats_box is None or getattr(self._stats_box, "axes", None) is None:
@@ -1408,7 +1453,12 @@ class ScatterView(BasePlotWidget):
                     ha="left",
                     va="top",
                     fontsize=9,
-                    bbox=dict(boxstyle="round", facecolor="white", alpha=0.6, linewidth=0.5),
+                    bbox=dict(
+                        boxstyle="round",
+                        facecolor="white",
+                        alpha=0.6,
+                        linewidth=0.5,
+                    ),
                     zorder=8,
                 )
             else:
@@ -1466,9 +1516,7 @@ class ScatterView(BasePlotWidget):
 
         # --- Weighted Pearson r_w (uses σ if available) ---
         rw = np.nan
-        if (getattr(self, "_sx_flat", None) is not None) and (
-            getattr(self, "_sy_flat", None) is not None
-        ):
+        if (getattr(self, "_sx_flat", None) is not None) and (getattr(self, "_sy_flat", None) is not None):
             try:
                 # prefer external helper if present
                 if "_weighted_pearson" in globals():
@@ -1514,16 +1562,17 @@ class ScatterView(BasePlotWidget):
                     self._mc_cache = None
             if self._mc_cache is not None:
                 rm, rlo, rhi = self._mc_cache
-                mc_line = f"MC Pearson r: {rm:.3f}  [2.5–97.5%: {rlo:.3f}–{rhi:.3f}]  (N={int(getattr(self, '_mc_iters', 1000))})"
+                mc_line = (
+                    f"MC Pearson r: {rm:.3f} "
+                    f"[2.5–97.5%: {rlo:.3f}–{rhi:.3f}] "
+                    f"(N={int(getattr(self, '_mc_iters', 1000))})"
+                )
             else:
                 mc_line = "MC Pearson r: NA (insufficient σ)"
 
-        # --- Compose stats text ----------------------------------------------------
+        # --- Compose stats text ----------------------------------------------
         lines = [f"n = {n}"]
-        lines.append(
-            f"Pearson r = {r:.3f}"
-            + (f"  (95% CI: {r_lo:.3f}–{r_hi:.3f})" if np.isfinite(r_lo) else "")
-        )
+        lines.append(f"Pearson r = {r:.3f}" + (f"  (95% CI: {r_lo:.3f}–{r_hi:.3f})" if np.isfinite(r_lo) else ""))
         lines.append(f"Spearman ρ = {rho:.3f}" if np.isfinite(rho) else "Spearman ρ = NA")
         if np.isfinite(rw):
             lines.append(f"Weighted Pearson r_w = {rw:.3f}")
@@ -1531,7 +1580,6 @@ class ScatterView(BasePlotWidget):
             lines.append(mc_line)
 
         text = "\n".join(lines)
-
 
         # Create/update stats box
         if self._stats_box is None or getattr(self._stats_box, "axes", None) is None:
@@ -1543,7 +1591,12 @@ class ScatterView(BasePlotWidget):
                 ha="left",
                 va="top",
                 fontsize=9,
-                bbox=dict(boxstyle="round", facecolor="white", alpha=0.6, linewidth=0.5),
+                bbox=dict(
+                    boxstyle="round",
+                    facecolor="white",
+                    alpha=0.6,
+                    linewidth=0.5,
+                ),
                 zorder=8,
             )
         else:
@@ -1586,9 +1639,7 @@ class LineScanView(BasePlotWidget):
         self.ax.set_ylabel("Normalized Intensity")
 
         self.ax.legend()
-        self._vline = self.ax.axvline(
-            self._xs[0] if len(self._xs) else 0, linestyle="--", linewidth=1
-        )
+        self._vline = self.ax.axvline(self._xs[0] if len(self._xs) else 0, linestyle="--", linewidth=1)
         _debounce(self, "_draw_timer", self.draw_idle, ms=40)
 
     def _on_motion(self, event):
@@ -1625,13 +1676,18 @@ class AnalysisStep(QWidget):
         if not os.path.isabs(self.data_path):
             # resolve relative paths into the working folder chosen in main.py
             self.data_path = os.path.abspath(
-                os.path.join(self.working_dir or os.getcwd(), os.path.basename(self.data_path))
+                os.path.join(
+                    self.working_dir or os.getcwd(),
+                    os.path.basename(self.data_path),
+                )
             )
         self._ternary_active = False
         self._ternary_dlg = None
         self._line_coords = None  # list of (x,y) along current line
-        self._roi_origin = (0, 0)  # top-left of current ROI for scatter -> full coords
-        self._highlights_enabled = True  # global toggle for maps/images (not scatter)
+        # top-left of current ROI for scatter -> full coords
+        self._roi_origin = (0, 0)
+        # global toggle for maps/images (not scatter)
+        self._highlights_enabled = True
         self._scatter_lasso_enabled = False
         self._ternary_active = False
         self._ternary_lasso_enabled = True
@@ -1769,7 +1825,8 @@ class AnalysisStep(QWidget):
         self.setLayout(root)
 
     def _on_ternary_lasso_pixels(self, full_coords):
-        """Convert ternary lasso pixels to indices and broadcast selection."""
+        """Convert ternary lasso pixels to indices and broadcast
+        selection."""
         if not full_coords:
             if hasattr(self, "selection"):
                 self.selection.set(set())
@@ -1783,13 +1840,11 @@ class AnalysisStep(QWidget):
         if hasattr(self, "maps_shape"):
             h, w = self.maps_shape
             for x, y in self.selected_pixels:
-                if 0 <= x < W and 0 <= y < H:
-                    idxs.add(y * W + x)
+                if 0 <= x < w and 0 <= y < h:
+                    idxs.add(y * w + x)
 
         if hasattr(self, "selection"):
-            self.selection.set(
-                idxs
-            )  # triggers _on_selection_changed → highlights maps + correlation
+            self.selection.set(idxs)  # triggers _on_selection_changed → highlights maps + correlation
         else:
             self._apply_highlights_everywhere()
 
@@ -1802,7 +1857,9 @@ class AnalysisStep(QWidget):
                 pass
 
     def _on_selection_changed(self, indices: set):
-        """Called when SelectionManager updates the selected flat indices.
+        """Called when SelectionManager updates the selected flat
+        indices.
+
         Keeps highlights, tables, and menus in sync.
         """
         try:
@@ -1829,28 +1886,32 @@ class AnalysisStep(QWidget):
         if tern is not None:
             tern.highlight_from_fullimg_indices(indices, parent=self)
 
-    def _apply_highlights_everywhere(self):
-        """Convenience when you have pixel coords (x,y) in self.selected_pixels.
-        Uses your existing _highlight_pixels_xy(...) if present.
-        """
-        pts = getattr(self, "selected_pixels", []) or []
-        if hasattr(self, "_highlight_pixels_xy"):
-            try:
-                self._highlight_pixels_xy(pts)  # your code accepts list of (x,y)
-            except Exception:
-                pass
-        else:
-            # Fallback: derive flat indices if you have a shape mapper
-            if hasattr(self, "maps_shape"):
-                h, w = self.maps_shape
-                idxs = set()
-                for x, y in pts:
-                    if 0 <= x < W and 0 <= y < H:
-                        idxs.add(y * W + x)
-                self._highlight_indices(idxs)
+    # def _apply_highlights_everywhere(self):
+    #     """Convenience when you have pixel coords (x,y) in
+    #     self.selected_pixels.
+
+    #     Uses your existing _highlight_pixels_xy(...) if present.
+    #     """
+    #     pts = getattr(self, "selected_pixels", []) or []
+    #     if hasattr(self, "_highlight_pixels_xy"):
+    #         try:
+    #             # your code accepts list of (x,y)
+    #             self._highlight_pixels_xy(pts)
+    #         except Exception:
+    #             pass
+    #     else:
+    #         # Fallback: derive flat indices if you have a shape mapper
+    #         if hasattr(self, "maps_shape"):
+    #             h, w = self.maps_shape
+    #             idxs = set()
+    #             for x, y in pts:
+    #                 if 0 <= x < w and 0 <= y < h:
+    #                     idxs.add(y * w + x)
+    #             self._highlight_indices(idxs)
 
     def _highlight_indices(self, indices: set):
-        """Broadcast selected indices to maps/images and the correlation plot."""
+        """Broadcast selected indices to maps/images and the correlation
+        plot."""
         # maps/images
         full_shape = getattr(self, "maps_shape", (None, None))
         for name in ("img1", "img2", "map1", "map2", "map3"):
@@ -1865,8 +1926,8 @@ class AnalysisStep(QWidget):
             elif hasattr(v, "set_highlight_points"):
                 # fallback: convert here
                 h, w = full_shape if full_shape else (None, None)
-                if H and W:
-                    pts = [(int(i) % W, int(i) // W) for i in indices if 0 <= int(i) < H * W]
+                if h and w:
+                    pts = [(int(i) % w, int(i) // w) for i in indices if 0 <= int(i) < h * w]
                     try:
                         v.set_highlight_points(pts)
                     except Exception:
@@ -1887,8 +1948,11 @@ class AnalysisStep(QWidget):
                     pass
 
     def _update_correlation_for_selection(self, indices: set):
-        """Notify the correlation scatter about which points are selected.
-        Your ScatterView can implement update_highlight()/set_highlight_indices().
+        """Notify the correlation scatter about which points are
+        selected.
+
+        Your ScatterView can implement
+        update_highlight()/set_highlight_indices().
         """
         sc = getattr(self, "scatter", None)
         if sc is None:
@@ -1927,7 +1991,12 @@ class AnalysisStep(QWidget):
             self.point_table_dialog = QTableWidget()
             self.point_table_dialog.setColumnCount(4)
             self.point_table_dialog.setHorizontalHeaderLabels(
-                ["Element", "Intensity", "Quantification", "Quantification (Normalized)"]
+                [
+                    "Element",
+                    "Intensity",
+                    "Quantification",
+                    "Quantification (Normalized)",
+                ]
             )
             hdr = self.point_table_dialog.horizontalHeader()
             hdr.setStretchLastSection(True)
@@ -1965,9 +2034,11 @@ class AnalysisStep(QWidget):
         self.cell6_layout.addWidget(widget)
 
     def _open_ternary_dialog(self):
-        """Open (or re-open) the triangular/ternary dialog and populate it from the
-        CURRENT VIEW using _update_ternary_with_current_view(). No calls to
-        _get_current_channels().
+        """Open (or re-open) the triangular/ternary dialog and populate
+        it from the CURRENT VIEW using
+        _update_ternary_with_current_view().
+
+        No calls to _get_current_channels().
         """
         # ensure flags exist
         if not hasattr(self, "_ternary_lasso_enabled"):
@@ -2009,21 +2080,16 @@ class AnalysisStep(QWidget):
             pass
 
         # keep ternary synced with pan/zoom of the scatter (connect only once)
-        if (
-            not hasattr(self, "_ternary_callbacks_connected")
-            or not self._ternary_callbacks_connected
-        ):
-            if (
-                hasattr(self, "scatter")
-                and hasattr(self.scatter, "ax")
-                and self.scatter.ax is not None
-            ):
+        if not hasattr(self, "_ternary_callbacks_connected") or not self._ternary_callbacks_connected:
+            if hasattr(self, "scatter") and hasattr(self.scatter, "ax") and self.scatter.ax is not None:
                 try:
                     self.scatter.ax.callbacks.connect(
-                        "xlim_changed", lambda ax: self._update_ternary_with_current_view()
+                        "xlim_changed",
+                        lambda ax: self._update_ternary_with_current_view(),
                     )
                     self.scatter.ax.callbacks.connect(
-                        "ylim_changed", lambda ax: self._update_ternary_with_current_view()
+                        "ylim_changed",
+                        lambda ax: self._update_ternary_with_current_view(),
                     )
                     self._ternary_callbacks_connected = True
                 except Exception:
@@ -2040,9 +2106,7 @@ class AnalysisStep(QWidget):
 
     def _clear_highlights(self):
         self.selected_pixels = []
-        """Set data path.
-    
-        """
+        """Set data path."""
         targets = (self.map1, self.map2, self.rgb, self.img1, self.img2)
         for w in targets:
             if hasattr(w, "set_highlight_points"):
@@ -2116,9 +2180,7 @@ class AnalysisStep(QWidget):
         self.data_list = data_list or []
         self.image_list = image_list or []
         if self.data_list:
-            self.log.append(
-                f"Loaded {len(self.data_list)} map(s); {len(self.image_list)} image(s)."
-            )
+            self.log.append(f"Loaded {len(self.data_list)} map(s); " f"{len(self.image_list)} image(s).")
             for cb in self.dropdown_menus:
                 cb.clear()
                 cb.addItems([name for name, _ in self.data_list])
@@ -2134,55 +2196,16 @@ class AnalysisStep(QWidget):
         base = self.working_dir or os.getcwd()
         return os.path.abspath(os.path.join(base, *parts))
 
-    def set_working_dir(self, folder: str):
-        if not folder:
-            return
-        folder = os.path.abspath(folder)
-        if folder == getattr(self, "working_dir", ""):
-            return
-        self.working_dir = folder
-        fname = os.path.basename(getattr(self, "data_path", "") or "data.h5")
-        self.set_data_path(os.path.join(folder, fname))
-
-    def set_data_path(self, path: str):
-        if not path:
-            return
-        new_path = os.path.abspath(path)
-        if new_path == getattr(self, "data_path", ""):
-            return
-        self.data_path = new_path
-        self.working_dir = os.path.dirname(new_path)
-
-        # restart DataLoader so it picks the new file
-        ld = getattr(self, "loader", None)
-        if ld is not None:
-            for m in ("requestInterruption", "quit"):
-                if hasattr(ld, m):
-                    try:
-                        getattr(ld, m)()
-                    except Exception:
-                        pass
-            if hasattr(ld, "wait"):
-                try:
-                    ld.wait(300)
-                except Exception:
-                    pass
-
-        self.loader = DataLoader(data_path=self.data_path)
-        self.loader.data_loaded.connect(self._on_data_loaded)
-        self.loader.start()
-        if hasattr(self, "log"):
-            try:
-                self.log.append(f"Using data at: {self.data_path}")
-            except Exception:
-                pass
 
     def _on_dropdown_changed(self, _):
         self._refresh_views_from_dropdowns()
 
     def _refresh_views_from_dropdowns(self):
-        """Refresh maps, images, RGB composite, and correlation/line views based on dropdown selection.
-        Also pushes per-pixel σ to the scatter for uncertainty-aware stats (MC/weighted).
+        """Refresh maps, images, RGB composite, and correlation/line
+        views based on dropdown selection.
+
+        Also pushes per-pixel σ to the scatter for uncertainty-aware
+        stats (MC/weighted).
         """
         if not getattr(self, "dropdown_menus", None) or len(self.dropdown_menus) < 3:
             return
@@ -2219,18 +2242,28 @@ class AnalysisStep(QWidget):
         bg = self.sg.value() / 100.0 if hasattr(self, "sg") else 1.0
         bb = self.sb.value() / 100.0 if hasattr(self, "sb") else 1.0
 
-        # ---- Update individual map views ----------------------------------------
+        # ---- Update individual map views ------------------------------------
         try:
-            self.map1.set_data(maps[0], cmap="Reds", title=self.selected_names[0], offset=(0, 0))
+            self.map1.set_data(
+                maps[0],
+                cmap="Reds",
+                title=self.selected_names[0],
+                offset=(0, 0),
+            )
         except TypeError:
             self.map1.set_data(maps[0], cmap="Reds", title=self.selected_names[0])
 
         try:
-            self.map2.set_data(maps[1], cmap="Greens", title=self.selected_names[1], offset=(0, 0))
+            self.map2.set_data(
+                maps[1],
+                cmap="Greens",
+                title=self.selected_names[1],
+                offset=(0, 0),
+            )
         except TypeError:
             self.map2.set_data(maps[1], cmap="Greens", title=self.selected_names[1])
 
-        # ---- Update RGB composite ------------------------------------------------
+        # ---- Update RGB composite -------------------------------------------
         try:
             self.rgb.set_data(
                 maps[0],
@@ -2244,10 +2277,16 @@ class AnalysisStep(QWidget):
             )
         except TypeError:
             self.rgb.set_data(
-                maps[0], maps[1], maps[2], names=self.selected_symbols, br=br, bg=bg, bb=bb
+                maps[0],
+                maps[1],
+                maps[2],
+                names=self.selected_symbols,
+                br=br,
+                bg=bg,
+                bb=bb,
             )
 
-        # ---- Update images if any ------------------------------------------------
+        # ---- Update images if any -------------------------------------------
         if getattr(self, "image_list", None):
             try:
                 self.img1.set_data(self.image_list[0][1], title="Image 1", offset=(0, 0))
@@ -2259,7 +2298,7 @@ class AnalysisStep(QWidget):
                 except TypeError:
                     self.img2.set_data(self.image_list[1][1], title="Image 2")
 
-        # ---- Correlation or Line views ------------------------------------------
+        # ---- Correlation or Line views --------------------------------------
         do_corr = getattr(self, "rb_corr", None) and self.rb_corr.isChecked()
         do_line = getattr(self, "rb_line", None) and self.rb_line.isChecked()
 
@@ -2274,7 +2313,8 @@ class AnalysisStep(QWidget):
             )
 
             # Push per-pixel σ for uncertainty-aware stats
-            # Prefer project helper if available; else basic Poisson sqrt(counts)
+            # Prefer project helper if available; else basic Poisson
+            # sqrt(counts)
             try:
                 sx = _estimate_sigma_from_counts(maps[0], scale=1.0)  # provided in helpers
                 sy = _estimate_sigma_from_counts(maps[1], scale=1.0)
@@ -2291,28 +2331,34 @@ class AnalysisStep(QWidget):
 
             # Respect last user choice, else defaults
             mc_enabled = getattr(
-                self.scatter, "_mc_enabled", getattr(self, "_mc_enabled_default", False)
+                self.scatter,
+                "_mc_enabled",
+                getattr(self, "_mc_enabled_default", False),
             )
-            mc_iters = getattr(self.scatter, "_mc_iters", getattr(self, "_mc_iters_default", 1000))
+            mc_iters = getattr(
+                self.scatter,
+                "_mc_iters",
+                getattr(self, "_mc_iters_default", 1000),
+            )
             if hasattr(self.scatter, "enable_mc"):
                 self.scatter.enable_mc(mc_enabled, iters=mc_iters)
 
         elif do_line and hasattr(self, "_plot_center_line"):
             self._plot_center_line()
 
-        # ---- ROI enablement ------------------------------------------------------
+        # ---- ROI enablement -------------------------------------------------
         enable_roi = bool(do_corr)
         for w in (self.map1, self.map2, self.rgb, self.img1, self.img2):
             if hasattr(w, "set_roi_enabled"):
                 w.set_roi_enabled(enable_roi)
 
-        # ---- apply highlights and clean cursors ----------------------------------
+        # ---- apply highlights and clean cursors -----------------------------
         if hasattr(self, "_apply_highlights_everywhere"):
             self._apply_highlights_everywhere()
         if hasattr(self, "_clear_all_cursors"):
             self._clear_all_cursors()
 
-        # ---- update ternary if present -------------------------------------------
+        # ---- update ternary if present --------------------------------------
         if hasattr(self, "_update_ternary_with_current_view"):
             self._update_ternary_with_current_view()
 
@@ -2380,7 +2426,12 @@ class AnalysisStep(QWidget):
 
             self.table_widget.setColumnCount(4)
             self.table_widget.setHorizontalHeaderLabels(
-                ["Element", "Intensity", "Quantification", "Quantification (Normalized)"]
+                [
+                    "Element",
+                    "Intensity",
+                    "Quantification",
+                    "Quantification (Normalized)",
+                ]
             )
 
         # ensure rows match channel count
@@ -2409,10 +2460,7 @@ class AnalysisStep(QWidget):
             sh = wb.active
             # try to detect header
             start_row = 2
-            hdr = [
-                v if v is not None else ""
-                for v in next(sh.iter_rows(min_row=1, max_row=1, values_only=True))
-            ]
+            hdr = [v if v is not None else "" for v in next(sh.iter_rows(min_row=1, max_row=1, values_only=True))]
             if any(s for s in hdr):
                 start_row = 2
             else:
@@ -2446,7 +2494,8 @@ class AnalysisStep(QWidget):
         return calib
 
     def _norm_elem_key(self, name: str):
-        # strip extension, content in parentheses/brackets, "intensity" suffix etc.
+        # strip extension, content in parentheses/brackets, "intensity" suffix
+        # etc.
         s = name.strip()
         s = re.sub(r"\.[A-Za-z0-9]+$", "", s)  # remove .txt/.csv/etc.
         s = re.sub(r"\s*\(.*?\)\s*", "", s)  # remove (...) parts
@@ -2488,7 +2537,7 @@ class AnalysisStep(QWidget):
                 quant_vals.append(0.0)
                 continue
             h, w = arr.shape[:2]
-            if not (0 <= x_full < W and 0 <= y_full < H):
+            if not (0 <= x_full < w and 0 <= y_full < h):
                 intensities.append(None)
                 quant_vals.append(0.0)
                 continue
@@ -2517,11 +2566,19 @@ class AnalysisStep(QWidget):
 
             # main (old cell6) table if you kept it
             self._set_point_row_values(
-                getattr(self, "table_widget", None), i, intensity, (qv if qv > 0 else None), qnorm
+                getattr(self, "table_widget", None),
+                i,
+                intensity,
+                (qv if qv > 0 else None),
+                qnorm,
             )
             # popup dialog table
             self._set_point_row_values(
-                self.point_table_dialog, i, intensity, (qv if qv > 0 else None), qnorm
+                self.point_table_dialog,
+                i,
+                intensity,
+                (qv if qv > 0 else None),
+                qnorm,
             )
 
         # ensure repaint
@@ -2617,7 +2674,9 @@ class AnalysisStep(QWidget):
             self._open_selected_points_table_dialog()
 
     def _compute_quant_for_xy(self, x_full, y_full):
-        """Compute per-channel Intensity, Quant, NormQuant for a single pixel (x_full,y_full).
+        """Compute per-channel Intensity, Quant, NormQuant for a single
+        pixel (x_full,y_full).
+
         Returns: (display_names, intensities, quants, norm_quants)
         """
         if not getattr(self, "data_list", None):
@@ -2634,18 +2693,18 @@ class AnalysisStep(QWidget):
                 quants.append(0.0)
                 continue
             h, w = arr.shape[:2]
-            if not (0 <= x_full < W and 0 <= y_full < H):
+            if not (0 <= x_full < w and 0 <= y_full < h):
                 intensities.append(None)
                 quants.append(0.0)
                 continue
-            I = float(arr[y_full, x_full])
-            intensities.append(I)
+            intensity = float(arr[y_full, x_full])
+            intensities.append(intensity)
 
             key = self._norm_elem_key(str(raw_name))
             if key in calib:
                 m, c = calib[key]
                 if m is not None and m != 0:
-                    qv = (I - (c or 0.0)) / m
+                    qv = (intensity - (c or 0.0)) / m
                     if qv < 0:
                         qv = 0.0
                     quants.append(qv)
@@ -2660,12 +2719,15 @@ class AnalysisStep(QWidget):
 
     def _open_selected_points_table_dialog(self):
         """Popup table with one row per selected pixel.
+
         Columns: x, y, then Q:<elem> and NQ%:<elem>.
         Clicking a row re-selects/focuses that pixel everywhere.
         """
         if not getattr(self, "selected_pixels", None) or len(self.selected_pixels) == 0:
             QMessageBox.information(
-                self, "No selection", "Select pixels first (click a map or lasso)."
+                self,
+                "No selection",
+                "Select pixels first (click a map or lasso).",
             )
             return
 
@@ -2748,8 +2810,10 @@ class AnalysisStep(QWidget):
         dlg.activateWindow()
 
     def _show_panel_menu(self, widget, pos):
-        """Context menu for any panel. Adds common actions and panel-specific items.
-        Now includes Uncertainty Propagation (MC) controls on the correlation panel.
+        """Context menu for any panel.
+
+        Adds common actions and panel-specific items. Now includes
+        Uncertainty Propagation (MC) controls on the correlation panel.
         """
         # ---- ensure state vars exist (idempotent) ----
         if not hasattr(self, "_highlights_enabled"):
@@ -2769,7 +2833,7 @@ class AnalysisStep(QWidget):
 
         menu = QMenu(widget)
 
-        # ---- Common actions ------------------------------------------------------
+        # ---- Common actions -------------------------------------------------
         act_quick = menu.addAction("Quick Reset")
         act_refresh = menu.addAction("Refresh")
 
@@ -2793,16 +2857,12 @@ class AnalysisStep(QWidget):
         act_mc_iters = None
         act_mc_hist = None
 
-        # ---- Panel-specific actions ---------------------------------------------
+        # ---- Panel-specific actions -----------------------------------------
         is_scatter_ctx = (
-            (widget is getattr(self, "scatter", None))
-            and getattr(self, "rb_corr", None)
-            and self.rb_corr.isChecked()
+            (widget is getattr(self, "scatter", None)) and getattr(self, "rb_corr", None) and self.rb_corr.isChecked()
         )
         is_line_ctx = (
-            (widget is getattr(self, "linescan", None))
-            and getattr(self, "rb_line", None)
-            and self.rb_line.isChecked()
+            (widget is getattr(self, "linescan", None)) and getattr(self, "rb_line", None) and self.rb_line.isChecked()
         )
 
         # Correlation scatter panel
@@ -2820,13 +2880,14 @@ class AnalysisStep(QWidget):
             act_ternary.setCheckable(True)
             act_ternary.setChecked(self._ternary_active)
 
-            # Ternary Lasso toggle — only if dialog exists and ternary is active
+            # Ternary Lasso toggle — only if dialog exists and ternary is
+            # active
             if self._ternary_active and (self._ternary_dlg is not None):
                 act_ternary_lasso = menu.addAction("Ternary Lasso")
                 act_ternary_lasso.setCheckable(True)
                 act_ternary_lasso.setChecked(self._ternary_lasso_enabled)
 
-            # ---- Uncertainty (MC) controls --------------------------------------
+            # ---- Uncertainty (MC) controls ----------------------------------
             # Show these only if the scatter supports uncertainty methods
             scat = getattr(self, "scatter", None)
             has_mc = hasattr(scat, "enable_mc")
@@ -2834,7 +2895,8 @@ class AnalysisStep(QWidget):
                 # Toggle (checkable)
                 act_mc_toggle = menu.addAction("Propagate Uncertainty (Monte Carlo)")
                 act_mc_toggle.setCheckable(True)
-                # Ask the scatter for current state if available; else use defaults
+                # Ask the scatter for current state if available; else use
+                # defaults
                 curr_mc = getattr(scat, "_mc_enabled", self._mc_enabled_default)
                 act_mc_toggle.setChecked(bool(curr_mc))
 
@@ -2851,15 +2913,18 @@ class AnalysisStep(QWidget):
             act_save_line = menu.addAction("Save Line Scan (CSV)")
 
         # Any image/ROI panel that's not scatter or linescan
-        if widget not in (getattr(self, "scatter", None), getattr(self, "linescan", None)):
+        if widget not in (
+            getattr(self, "scatter", None),
+            getattr(self, "linescan", None),
+        ):
             act_save_roi = menu.addAction("Save ROI")
 
-        # ---- Execute and capture the chosen action -------------------------------
+        # ---- Execute and capture the chosen action --------------------------
         chosen = menu.exec_(widget.mapToGlobal(pos))
         if chosen is None:
             return
 
-        # ---- Handle actions (common) ---------------------------------------------
+        # ---- Handle actions (common) ----------------------------------------
         if chosen is act_quick and hasattr(self, "_quick_reset"):
             self._quick_reset()
             return
@@ -2882,7 +2947,7 @@ class AnalysisStep(QWidget):
                 self._open_pointdata_dialog()
             return
 
-        # ---- Handle actions (correlation scatter) --------------------------------
+        # ---- Handle actions (correlation scatter) ---------------------------
         if (act_select_pixels is not None) and (chosen is act_select_pixels):
             self._scatter_lasso_enabled = not self._scatter_lasso_enabled
             if hasattr(self, "scatter") and hasattr(self.scatter, "enable_lasso"):
@@ -2932,7 +2997,7 @@ class AnalysisStep(QWidget):
                 self._ternary_dlg.enable_lasso(self._ternary_lasso_enabled)
             return
 
-        # ---- Uncertainty (MC) handlers ------------------------------------------
+        # ---- Uncertainty (MC) handlers --------------------------------------
         if (act_mc_toggle is not None) and (chosen is act_mc_toggle):
             if hasattr(self, "scatter") and hasattr(self.scatter, "enable_mc"):
                 self.scatter.enable_mc(act_mc_toggle.isChecked(), iters=None)
@@ -2953,7 +3018,11 @@ class AnalysisStep(QWidget):
                 )
                 if ok and hasattr(self, "scatter") and hasattr(self.scatter, "enable_mc"):
                     self.scatter.enable_mc(
-                        getattr(self.scatter, "_mc_enabled", self._mc_enabled_default),
+                        getattr(
+                            self.scatter,
+                            "_mc_enabled",
+                            self._mc_enabled_default,
+                        ),
                         iters=int(iters),
                     )
                     self._mc_iters_default = int(iters)
@@ -2975,7 +3044,7 @@ class AnalysisStep(QWidget):
                     pass
             return
 
-        # ---- Handle actions (line-scan) ------------------------------------------
+        # ---- Handle actions (line-scan) -------------------------------------
         if (act_save_line is not None) and (chosen is act_save_line):
             if hasattr(self, "linescan") and hasattr(self.linescan, "save_csv"):
                 self.linescan.save_csv(self)
@@ -2983,7 +3052,7 @@ class AnalysisStep(QWidget):
                 self._save_linescan_csv()
             return
 
-        # ---- Handle actions (ROI) ------------------------------------------------
+        # ---- Handle actions (ROI) -------------------------------------------
         if (act_save_roi is not None) and (chosen is act_save_roi):
             if hasattr(self, "_save_roi"):
                 self._save_roi()
@@ -2997,14 +3066,15 @@ class AnalysisStep(QWidget):
 
     # ---------- Interactions ----------
     def _on_roi_selected(self, roi):
-        """Zoom all panels to ROI, update scatter with remembered limits, and keep highlights."""
+        """Zoom all panels to ROI, update scatter with remembered
+        limits, and keep highlights."""
         self.latest_roi = roi
         if not self.selected_data or not self.selected_names or not self.image_list:
             return
 
         m0, m1, m2 = self.selected_data
         h, w = m0.shape[:2]
-        x1, y1, x2, y2 = self._fix_roi_bounds(roi, W, H, min_size=2)
+        x1, y1, x2, y2 = self._fix_roi_bounds(roi, w, h, min_size=2)
 
         # store ROI origin so lasso coords map to full image
         self._roi_origin = (x1, y1)
@@ -3015,21 +3085,24 @@ class AnalysisStep(QWidget):
 
         try:
             self.map1.set_data(
-
-                m0[y1:y2, x1:x2], cmap="Reds", title=self.selected_names[0], offset=(x1, y1)
+                m0[y1:y2, x1:x2],
+                cmap="Reds",
+                title=self.selected_names[0],
+                offset=(x1, y1),
             )
         except TypeError:
             self.map1.set_data(m0[y1:y2, x1:x2], cmap="Reds", title=self.selected_names[0])
 
         try:
             self.map2.set_data(
-                m1[y1:y2, x1:x2], cmap="Greens", title=self.selected_names[1], offset=(x1, y1)
+                m1[y1:y2, x1:x2],
+                cmap="Greens",
+                title=self.selected_names[1],
+                offset=(x1, y1),
             )
         except TypeError:
             self.map2.set_data(m1[y1:y2, x1:x2], cmap="Greens", title=self.selected_names[1])
-            """Nz norm.
-        
-            """
+            """Nz norm."""
 
         try:
             self.rgb.set_data(
@@ -3078,15 +3151,18 @@ class AnalysisStep(QWidget):
         self._plot_line_scan(x1, y1, x2, y2)
 
     def _current_roi_slices(self):
-        """Return (y1:y2, x1:x2) for current view. If no ROI, full image slice."""
+        """Return (y1:y2, x1:x2) for current view.
+
+        If no ROI, full image slice.
+        """
         if not self.selected_data:
             return (slice(None), slice(None))
         m0 = self.selected_data[0]
         h, w = m0.shape[:2]
         if self.latest_roi:
-            x1, y1, x2, y2 = self._fix_roi_bounds(self.latest_roi, W, H, min_size=2)
+            x1, y1, x2, y2 = self._fix_roi_bounds(self.latest_roi, w, h, min_size=2)
             return (slice(y1, y2), slice(x1, x2))
-        return (slice(0, H), slice(0, W))
+        return (slice(0, h), slice(0, w))
 
     def _update_ternary_with_current_view(self):
         if not (self._ternary_active and self._ternary_dlg and self.selected_data):
@@ -3107,8 +3183,8 @@ class AnalysisStep(QWidget):
         W = (xs.stop - xs.start) if isinstance(xs, slice) else len(np.arange(r.shape[1])[xs])
         roi_shape = (H, W)
         roi_origin = (
-            xs.start if isinstance(xs, slice) else int(np.min(np.arange(r.shape[1])[xs])),
-            ys.start if isinstance(ys, slice) else int(np.min(np.arange(r.shape[0])[ys])),
+            (xs.start if isinstance(xs, slice) else int(np.min(np.arange(r.shape[1])[xs]))),
+            (ys.start if isinstance(ys, slice) else int(np.min(np.arange(r.shape[0])[ys]))),
         )
 
         self._ternary_dlg.update_points(a, bb, cc, roi_shape=roi_shape, roi_origin=roi_origin)
@@ -3139,7 +3215,11 @@ class AnalysisStep(QWidget):
             ys = np.linspace(y1, y2, n).astype(int)
             xs = np.clip(xs, 0, img.shape[1] - 1)
             ys = np.clip(ys, 0, img.shape[0] - 1)
-            return np.arange(n), img[ys, xs], list(zip(xs.tolist(), ys.tolist(), strict=False))
+            return (
+                np.arange(n),
+                img[ys, xs],
+                list(zip(xs.tolist(), ys.tolist(), strict=False)),
+            )
 
         m0, m1, m2 = self.selected_data
         xs0, v0, coords0 = sample_line(m0, x1, y1, x2, y2)
@@ -3223,9 +3303,7 @@ class AnalysisStep(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to save correlation data: {e}")
 
     def _save_line_scan(self):
-        """Set data path.
-    
-        """
+        """Set data path."""
         if not hasattr(self, "_last_linescan") or self._last_linescan is None:
             QMessageBox.warning(self, "Warning", "No line scan to save.")
             return
@@ -3266,7 +3344,9 @@ class AnalysisStep(QWidget):
             dialog.accept()
         except Exception:
             QMessageBox.warning(
-                self, "Invalid Input", "Please enter four integers separated by commas."
+                self,
+                "Invalid Input",
+                "Please enter four integers separated by commas.",
             )
 
     def _quick_reset(self):
@@ -3294,7 +3374,14 @@ class AnalysisStep(QWidget):
 
         try:
             self.rgb.set_data(
-                r, g, b, names=self.selected_symbols, br=br, bg=bg, bb=bb, offset=(0, 0)
+                r,
+                g,
+                b,
+                names=self.selected_symbols,
+                br=br,
+                bg=bg,
+                bb=bb,
+                offset=(0, 0),
             )
         except TypeError:
             self.rgb.set_data(r, g, b, names=self.selected_symbols, br=br, bg=bg, bb=bb)
@@ -3312,7 +3399,11 @@ class AnalysisStep(QWidget):
 
         if self.rb_corr.isChecked():
             self.scatter.set_data(
-                r, g, f"{names[0]} Intensity", f"{names[1]} Intensity", remember_limits=False
+                r,
+                g,
+                f"{names[0]} Intensity",
+                f"{names[1]} Intensity",
+                remember_limits=False,
             )
         elif self.rb_line.isChecked():
             if getattr(self, "latest_line", None):

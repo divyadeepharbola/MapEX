@@ -3,57 +3,84 @@
 # -------------------------------------------
 # IMPORTANT: cap threads BEFORE any NumPy/BLAS imports
 import os
-os.environ.setdefault("OMP_NUM_THREADS", "4")
 import sys
+
+import h5py
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from matplotlib.backends.backend_qt5agg import (
+    FigureCanvasQTAgg as FigureCanvas,
+)
+from matplotlib.colors import ListedColormap
+from matplotlib.figure import Figure
+from matplotlib.path import Path
+from matplotlib.widgets import EllipseSelector, LassoSelector
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from PyQt5.QtCore import QObject, Qt, QThread, pyqtSignal, pyqtSlot
+from PyQt5.QtGui import QIntValidator
+from PyQt5.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QSpinBox,
+    QSplitter,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+from scipy import ndimage as ndi
+from scipy.ndimage import gaussian_filter
+from sklearn.cluster import (
+    DBSCAN,
+    OPTICS,
+    AffinityPropagation,
+    AgglomerativeClustering,
+    Birch,
+    MeanShift,
+    MiniBatchKMeans,
+    SpectralClustering,
+)
+from sklearn.cluster import MiniBatchKMeans as _MBK_for_iso
+from sklearn.decomposition import NMF, PCA
+from sklearn.metrics import davies_bouldin_score, silhouette_score
+from sklearn.mixture import GaussianMixture
+from sklearn.neighbors import NearestNeighbors
+from sklearn.preprocessing import RobustScaler
+from sklearn.utils import check_random_state
+
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")
 os.environ.setdefault("MKL_NUM_THREADS", "4")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "4")
 
-import h5py
-import numpy as np
-import pandas as pd
-import time
-
-from PyQt5.QtCore import Qt, QObject, pyqtSignal, QThread, pyqtSlot
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTextEdit,
-    QComboBox, QLabel, QPushButton, QCheckBox, QProgressBar, QMessageBox,
-    QLineEdit, QFormLayout, QGroupBox, QSpinBox, QDialog, QDialogButtonBox
-)
-from PyQt5.QtGui import QIntValidator
 
 # Use Qt backend for interactive plots inside the app
-import matplotlib
+
 try:
     matplotlib.use("Qt5Agg")
 except Exception:
     pass
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-from matplotlib.colors import ListedColormap
-from matplotlib.widgets import LassoSelector, EllipseSelector, RectangleSelector
-from matplotlib.path import Path
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from scipy.ndimage import gaussian_filter
-from scipy import ndimage as ndi
 
 # ML / Stats
-from sklearn.preprocessing import RobustScaler
-from sklearn.decomposition import PCA, NMF
-from sklearn.cluster import (
-    MiniBatchKMeans, AgglomerativeClustering, MeanShift, DBSCAN,
-    AffinityPropagation, SpectralClustering, Birch, OPTICS
-)
-from sklearn.mixture import GaussianMixture
-from sklearn.metrics import silhouette_score, davies_bouldin_score
-from sklearn.utils import check_random_state
-from sklearn.neighbors import NearestNeighbors
 
 # Optional fuzzy c-means
 try:
     from skfuzzy import cmeans
+
     _HAS_SKFUZZY = True
 except Exception:
     _HAS_SKFUZZY = False
@@ -61,6 +88,7 @@ except Exception:
 # Optional HDBSCAN
 try:
     import hdbscan
+
     _HAS_HDBSCAN = True
 except Exception:
     _HAS_HDBSCAN = False
@@ -68,6 +96,7 @@ except Exception:
 # Optional UMAP
 try:
     import umap
+
     _HAS_UMAP = True
 except Exception:
     _HAS_UMAP = False
@@ -75,6 +104,7 @@ except Exception:
 # Optional t-SNE
 try:
     from sklearn.manifold import TSNE
+
     _HAS_TSNE = True
 except Exception:
     _HAS_TSNE = False
@@ -82,6 +112,7 @@ except Exception:
 # Optional interactive hover for pie chart
 try:
     import mplcursors
+
     _HAS_MPLCURSORS = True
 except Exception:
     _HAS_MPLCURSORS = False
@@ -89,6 +120,7 @@ except Exception:
 # Optional SOM (MiniSom)
 try:
     from minisom import MiniSom
+
     _HAS_MINISOM = True
 except Exception:
     _HAS_MINISOM = False
@@ -97,27 +129,32 @@ except Exception:
 # Utility helpers
 # -------------------
 MAX_PREVIEW_SIDE = 2000  # cap longer side for on-screen preview to avoid huge Qt canvas
-ENABLE_PREVIEW_PCA = False  # keep disabled (no preview clustering UI in this build)
+# keep disabled (no preview clustering UI in this build)
+ENABLE_PREVIEW_PCA = False
+
 
 def _preview_img(img2d):
     H, W = img2d.shape[:2]
     s = max(1, int(np.ceil(max(H, W) / MAX_PREVIEW_SIDE)))
     return img2d[::s, ::s] if s > 1 else img2d, s
 
+
 def _assign_by_centers(feat, centers, batch=250_000):
-    """Assign each point in feat to its nearest center (squared Euclidean)."""
+    """Assign each point in feat to its nearest center (squared
+    Euclidean)."""
     n = feat.shape[0]
     out = np.empty(n, dtype=np.int32)
     s = 0
-    c_norm = (centers ** 2).sum(axis=1, keepdims=True).T  # (k,)
+    c_norm = (centers**2).sum(axis=1, keepdims=True).T  # (k,)
     while s < n:
         e = min(s + batch, n)
         Xb = feat[s:e]
-        x_norm = (Xb ** 2).sum(axis=1, keepdims=True)     # (b,1)
-        d = x_norm + c_norm - 2.0 * (Xb @ centers.T)      # (b,k)
+        x_norm = (Xb**2).sum(axis=1, keepdims=True)  # (b,1)
+        d = x_norm + c_norm - 2.0 * (Xb @ centers.T)  # (b,k)
         out[s:e] = np.argmin(d, axis=1).astype(np.int32)
         s = e
     return out
+
 
 def _safe_nan_to_num(x):
     x = np.asarray(x, dtype=np.float64)
@@ -129,8 +166,12 @@ def _safe_nan_to_num(x):
     x = np.nan_to_num(x, nan=0.0, posinf=maxf, neginf=0.0)
     return x
 
+
 def _clr_transform(arr, eps=None):
-    """Centered log-ratio transform channel-wise (compositional): arr[..., C]."""
+    """Centered log-ratio transform channel-wise (compositional):
+
+    arr[..., C].
+    """
     x = np.asarray(arr, dtype=np.float64)
     x[x < 0] = 0.0
     if eps is None:
@@ -140,6 +181,7 @@ def _clr_transform(arr, eps=None):
     gm = np.exp(np.mean(np.log(x), axis=-1, keepdims=True))
     clr = np.log(x / gm)
     return clr
+
 
 def _majority_filter(labels, size=3):
     """Simple 2D majority filter over integer labels."""
@@ -152,10 +194,12 @@ def _majority_filter(labels, size=3):
 
     return ndi.generic_filter(labels, mode_func, footprint=footprint, mode="nearest")
 
+
 def _auto_components_for_pca(n_features, n_pixels):
     cap = min(25, n_features)
     base = int(min(cap, max(2, round(min(n_features, 10 if n_pixels > 5e6 else 15)))))
     return base
+
 
 def _nice_error(msg, parent=None):
     if parent is not None:
@@ -163,16 +207,18 @@ def _nice_error(msg, parent=None):
     else:
         print("ERROR:", msg)
 
+
 def _make_consistent_cmap(n, base_name="tab20"):
     base = plt.get_cmap(base_name)
     xs = np.linspace(0, 1, max(n, base.N), endpoint=True)[:n]
     colors = base(xs)
     return ListedColormap(colors)
 
+
 # -------------------
 # Simple ISODATA (split-merge) on a subsample then nearest-centroid assign
 # -------------------
-from sklearn.cluster import MiniBatchKMeans as _MBK_for_iso
+
 
 def _isodata_centroids(X, k0=6, max_iter=10, split_std_thresh=0.8, merge_dist_thresh=1.0, rng=None):
     rng = check_random_state(42 if rng is None else rng)
@@ -186,14 +232,15 @@ def _isodata_centroids(X, k0=6, max_iter=10, split_std_thresh=0.8, merge_dist_th
         for j in range(len(cents)):
             pts = X[labels == j]
             if len(pts) < 2:
-                new_cents.append(cents[j]); continue
+                new_cents.append(cents[j])
+                continue
             std = pts.std(axis=0)
             if np.mean(std) > split_std_thresh:
                 to_split.append((j, std))
             else:
                 new_cents.append(cents[j])
 
-        for (j, std) in to_split:
+        for j, std in to_split:
             c = cents[j]
             delta = 0.5 * std / (np.linalg.norm(std) + 1e-9)
             new_cents.append(c + delta)
@@ -202,12 +249,15 @@ def _isodata_centroids(X, k0=6, max_iter=10, split_std_thresh=0.8, merge_dist_th
 
         keep = np.ones(len(cents), dtype=bool)
         for a in range(len(cents)):
-            if not keep[a]: continue
+            if not keep[a]:
+                continue
             for b in range(a + 1, len(cents)):
-                if not keep[b]: continue
+                if not keep[b]:
+                    continue
                 d = np.linalg.norm(cents[a] - cents[b])
                 if d < merge_dist_thresh:
-                    cents[a] = 0.5 * (cents[a] + cents[b]); keep[b] = False
+                    cents[a] = 0.5 * (cents[a] + cents[b])
+                    keep[b] = False
         cents = cents[keep]
 
         d2 = ((X[:, None, :] - cents[None, :, :]) ** 2).sum(axis=2)
@@ -219,19 +269,20 @@ def _isodata_centroids(X, k0=6, max_iter=10, split_std_thresh=0.8, merge_dist_th
 
     return cents
 
+
 # -------------------
 # Workers (no GUI calls from worker thread)
 # -------------------
 class _PhaseWorker(QObject):
     progress = pyqtSignal(int)
     log = pyqtSignal(str)
-    done = pyqtSignal(object, object, object)  # (phase_map HxW, labels N, extras dict)
+    # (phase_map HxW, labels N, extras dict)
+    done = pyqtSignal(object, object, object)
     error = pyqtSignal(str)
 
     def __init__(self, owner):
         super().__init__()
         self.p = owner
-        
 
     def _emit_progress(self, frac):
         try:
@@ -242,9 +293,9 @@ class _PhaseWorker(QObject):
 
     def run(self):
         p = self.p
-        orig_log  = getattr(p, "_log", None)
+        orig_log = getattr(p, "_log", None)
         orig_prog = getattr(p, "_update_progress_fraction", None)
-        p._log = (lambda s: self.log.emit(str(s)))
+        p._log = lambda s: self.log.emit(str(s))
         p._update_progress_fraction = self._emit_progress
 
         try:
@@ -294,7 +345,11 @@ class _PhaseWorker(QObject):
                     except Exception:
                         n_comp = min(C, 10)
                 self.log.emit(f"PCA → {n_comp} components…")
-                pca = PCA(n_components=n_comp, svd_solver="randomized", random_state=42)
+                pca = PCA(
+                    n_components=n_comp,
+                    svd_solver="randomized",
+                    random_state=42,
+                )
                 feat = pca.fit_transform(flat)
             else:
                 feat = flat
@@ -305,8 +360,17 @@ class _PhaseWorker(QObject):
             self.progress.emit(35)
 
             method = p.phase_method.currentText().lower()
-            need_k = method in ("kmeans", "gmm", "gmm_diag", "fcm", "nmf_kmeans",
-                                "isodata", "spectral", "hierarchical", "som")
+            need_k = method in (
+                "kmeans",
+                "gmm",
+                "gmm_diag",
+                "fcm",
+                "nmf_kmeans",
+                "isodata",
+                "spectral",
+                "hierarchical",
+                "som",
+            )
             k = None
             if need_k:
                 self.log.emit(f"Estimating k for method={method}…")
@@ -351,10 +415,13 @@ class _PhaseWorker(QObject):
 
         finally:
             try:
-                if orig_log is not None:  p._log = orig_log
-                if orig_prog is not None: p._update_progress_fraction = orig_prog
+                if orig_log is not None:
+                    p._log = orig_log
+                if orig_prog is not None:
+                    p._update_progress_fraction = orig_prog
             except Exception:
                 pass
+
 
 class _ReclusterWorker(QObject):
     progress = pyqtSignal(int)
@@ -398,6 +465,7 @@ class _ReclusterWorker(QObject):
             except Exception:
                 pass
 
+
 # -------------------
 # Main Widget
 # -------------------
@@ -424,7 +492,8 @@ class PhaseMappingStep(QWidget):
         self._log("Ready. Select options and run.")
 
     def set_working_dir(self, folder: str):
-        """Called by main.py to enforce one working directory for all inputs/outputs."""
+        """Called by main.py to enforce one working directory for all
+        inputs/outputs."""
         self.working_dir = os.path.abspath(folder) if folder else ""
         # If data_path is relative (or default), pin it into the working dir.
         if self.data_path and not os.path.isabs(self.data_path):
@@ -435,7 +504,6 @@ class PhaseMappingStep(QWidget):
         """Join path parts under working_dir (fallback: CWD)."""
         base = self.working_dir or os.getcwd()
         return os.path.join(base, *parts)
-
 
     # ---------- UI ----------
     def _build_ui(self):
@@ -464,12 +532,25 @@ class PhaseMappingStep(QWidget):
         method_row = QHBoxLayout()
         method_row.addWidget(QLabel("Phase method:", self))
         self.phase_method = QComboBox(self)
-        self.phase_method.addItems([
-            "kmeans", "gmm", "gmm_diag", "fcm", "hierarchical",
-            "spectral", "birch", "optics", "affinity_propagation",
-            "meanshift", "dbscan", "hdbscan", "isodata", "som",
-            "nmf_kmeans"
-        ])
+        self.phase_method.addItems(
+            [
+                "kmeans",
+                "gmm",
+                "gmm_diag",
+                "fcm",
+                "hierarchical",
+                "spectral",
+                "birch",
+                "optics",
+                "affinity_propagation",
+                "meanshift",
+                "dbscan",
+                "hdbscan",
+                "isodata",
+                "som",
+                "nmf_kmeans",
+            ]
+        )
         method_row.addWidget(self.phase_method)
         self.auto_cluster = QCheckBox("Auto-Clustering", self)
         self.auto_cluster.setChecked(False)
@@ -483,35 +564,44 @@ class PhaseMappingStep(QWidget):
         self.scaling_choice.addItems(["None", "Standard (count/mean)", "MinMax [0,1]", "Robust (5-95%)"])
         crit_row.addWidget(self.scaling_choice)
         crit_row.addWidget(QLabel("Pre-smooth σ:", self))
-        self.sigma_edit = QLineEdit(self); self.sigma_edit.setText("1.0")
+        self.sigma_edit = QLineEdit(self)
+        self.sigma_edit.setText("1.0")
         crit_row.addWidget(self.sigma_edit)
         controls_layout.addLayout(crit_row)
 
         # Advanced
         self.adv = QGroupBox("Advanced settings", self)
-        self.adv.setCheckable(True); self.adv.setChecked(False)
+        self.adv.setCheckable(True)
+        self.adv.setChecked(False)
         adv_form = QFormLayout(self.adv)
         self.chk_quant = QCheckBox("Quantify using Calibration_data.xlsx", self)
         adv_form.addRow(self.chk_quant)
         self.chk_clr = QCheckBox("CLR (compositional) transform", self)
         adv_form.addRow(self.chk_clr)
-        self.chk_pca = QCheckBox("PCA before clustering", self); self.chk_pca.setChecked(True)
+        self.chk_pca = QCheckBox("PCA before clustering", self)
+        self.chk_pca.setChecked(True)
         adv_form.addRow(self.chk_pca)
-        self.pca_n_edit = QLineEdit(self); self.pca_n_edit.setPlaceholderText("auto")
+        self.pca_n_edit = QLineEdit(self)
+        self.pca_n_edit.setPlaceholderText("auto")
         self.pca_n_edit.setValidator(QIntValidator(2, 128, self))
         adv_form.addRow("PCA components:", self.pca_n_edit)
-        self.chk_spatial = QCheckBox("Spatial post-smoothing (3×3 majority)", self); self.chk_spatial.setChecked(True)
+        self.chk_spatial = QCheckBox("Spatial post-smoothing (3×3 majority)", self)
+        self.chk_spatial.setChecked(True)
         adv_form.addRow(self.chk_spatial)
         controls_layout.addWidget(self.adv)
 
         # Run & progress
         run_row = QHBoxLayout()
-        self.btn_run = QPushButton("Run Phase Mapping", self); self.btn_run.clicked.connect(self._on_run)
+        self.btn_run = QPushButton("Run Phase Mapping", self)
+        self.btn_run.clicked.connect(self._on_run)
         run_row.addWidget(self.btn_run)
-        self.btn_save = QPushButton("Save Results", self); self.btn_save.clicked.connect(self._save_results)
+        self.btn_save = QPushButton("Save Results", self)
+        self.btn_save.clicked.connect(self._save_results)
         run_row.addWidget(self.btn_save)
         controls_layout.addLayout(run_row)
-        self.progress = QProgressBar(self); self.progress.setRange(0, 100); self.progress.hide()
+        self.progress = QProgressBar(self)
+        self.progress.setRange(0, 100)
+        self.progress.hide()
         controls_layout.addWidget(self.progress)
 
         # K panel
@@ -524,17 +614,29 @@ class PhaseMappingStep(QWidget):
         krow = QHBoxLayout()
         krow.addWidget(QLabel("K-criterion:", self))
         self.k_criterion = QComboBox(self)
-        self.k_criterion.addItems(["elbow", "silhouette", "davies_bouldin", "gap", "bic_aic", "consensus"])
+        self.k_criterion.addItems(
+            [
+                "elbow",
+                "silhouette",
+                "davies_bouldin",
+                "gap",
+                "bic_aic",
+                "consensus",
+            ]
+        )
         self.k_criterion.currentIndexChanged.connect(self._refresh_kpanel_curve)
         krow.addWidget(self.k_criterion)
         krow.addWidget(QLabel("k:", self))
-        self.k_spin = QSpinBox(self); self.k_spin.setRange(2, 128); self.k_spin.setValue(3)
+        self.k_spin = QSpinBox(self)
+        self.k_spin.setRange(2, 128)
+        self.k_spin.setValue(3)
         self.k_spin.valueChanged.connect(self._on_k_spin_changed)
         krow.addWidget(self.k_spin)
         self.btn_recluster = QPushButton("Recluster", self)
         self.btn_recluster.setToolTip("Run clustering with current k and method")
         self.btn_recluster.clicked.connect(self._on_recluster_clicked)
-        krow.addWidget(self.btn_recluster); krow.addStretch(1)
+        krow.addWidget(self.btn_recluster)
+        krow.addStretch(1)
         kpanel_layout.addLayout(krow)
         self.kpanel.hide()
         controls_layout.addWidget(self.kpanel)
@@ -572,7 +674,16 @@ class PhaseMappingStep(QWidget):
 
     def _on_method_changed(self):
         m = self.phase_method.currentText()
-        need_k = m in ("kmeans", "gmm", "fcm", "nmf_kmeans", "isodata", "spectral", "hierarchical", "som")
+        need_k = m in (
+            "kmeans",
+            "gmm",
+            "fcm",
+            "nmf_kmeans",
+            "isodata",
+            "spectral",
+            "hierarchical",
+            "som",
+        )
         self.kpanel.setEnabled(need_k)
         if not need_k:
             self.kpanel.hide()
@@ -586,7 +697,7 @@ class PhaseMappingStep(QWidget):
     def _load_data_h5(self):
         path = self.data_path
         if not os.path.isfile(path):
-            _nice_error("Data file not found: {}".format(path), self)
+            _nice_error(f"Data file not found: {path}", self)
             return
         try:
             with h5py.File(path, "r") as f:
@@ -602,13 +713,13 @@ class PhaseMappingStep(QWidget):
                     arr = np.array(ds)
                     self.data_list.append(arr)
                     self.element_names.append(str(name))
-                    self._log("Loaded map: {}  shape={}".format(name, arr.shape))
+                    self._log(f"Loaded map: {name}  shape={arr.shape}")
             if not self.data_list:
                 _nice_error("No maps found under 'X-ray Maps/*/data'.", self)
                 return
-            self._log("Total maps: {}".format(len(self.data_list)))
+            self._log(f"Total maps: {len(self.data_list)}")
         except Exception as e:
-            _nice_error("Failed to load HDF5: {}".format(e), self)
+            _nice_error(f"Failed to load HDF5: {e}", self)
 
     def _load_calibration_maybe(self):
         # Prefer the working dir; fall back to the folder of data_path.
@@ -626,10 +737,10 @@ class PhaseMappingStep(QWidget):
                 self.calibration = None
                 return
             self.calibration = {str(r["Elements"]).strip(): (float(r["m"]), float(r["c"])) for _, r in df.iterrows()}
-            self._log("Loaded calibration for {} elements.".format(len(self.calibration)))
+            self._log(f"Loaded calibration for {len(self.calibration)} elements.")
         except Exception as e:
             self.calibration = None
-            self._log("Failed to load calibration: {}".format(e))
+            self._log(f"Failed to load calibration: {e}")
 
     def _apply_quantification_if_requested(self, stack, names):
         if not self.chk_quant.isChecked():
@@ -645,10 +756,10 @@ class PhaseMappingStep(QWidget):
                 m, c = self.calibration[key]
                 m = m if m != 0 else 1.0
                 out[..., i] = (stack[..., i] - c) / m
-                self._log("Quantified {}: (I - {}) / {}".format(key, c, m))
+                self._log(f"Quantified {key}: (I - {c}) / {m}")
             else:
                 out[..., i] = stack[..., i]
-                self._log("No calibration for {}; raw used.".format(key))
+                self._log(f"No calibration for {key}; raw used.")
         return out
 
     def _apply_scaling(self, flat, choice):
@@ -658,17 +769,23 @@ class PhaseMappingStep(QWidget):
             self._log("Scaling: None")
             return flat
         if choice.startswith("standard"):
-            mu = np.mean(flat, axis=0); mu[mu == 0] = eps
+            mu = np.mean(flat, axis=0)
+            mu[mu == 0] = eps
             self._log("Scaling: Standard (count/mean)")
             return flat / mu
         if choice.startswith("minmax"):
-            mn = np.min(flat, axis=0); mx = np.max(flat, axis=0)
+            mn = np.min(flat, axis=0)
+            mx = np.max(flat, axis=0)
             rng = np.maximum(mx - mn, eps)
             self._log("Scaling: MinMax [0,1]")
             return (flat - mn) / rng
         if choice.startswith("robust"):
             self._log("Scaling: Robust (5-95%)")
-            rs = RobustScaler(with_centering=True, with_scaling=True, quantile_range=(5.0, 95.0))
+            rs = RobustScaler(
+                with_centering=True,
+                with_scaling=True,
+                quantile_range=(5.0, 95.0),
+            )
             return rs.fit_transform(flat)
         return flat
 
@@ -688,50 +805,67 @@ class PhaseMappingStep(QWidget):
             ks = list(range(2, 11))
             vals = []
             for i, k in enumerate(ks):
-                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks)-1))
+                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks) - 1))
                 g = GaussianMixture(n_components=k, random_state=42)
-                g.fit(X); vals.append(g.bic(X))
+                g.fit(X)
+                vals.append(g.bic(X))
             suggested = ks[int(np.argmin(vals))]
-            self._kcurve_cache[key] = (ks, vals, suggested); return ks, vals, suggested
+            self._kcurve_cache[key] = (ks, vals, suggested)
+            return ks, vals, suggested
 
         if c == "elbow":
-            ks = list(range(2, 11)); inertia = []
+            ks = list(range(2, 11))
+            inertia = []
             for i, k in enumerate(ks):
-                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks)-1))
+                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks) - 1))
                 km = MiniBatchKMeans(n_clusters=k, random_state=42).fit(X)
                 inertia.append(km.inertia_)
             diffs = np.diff(inertia)
             suggested = ks[np.argmin(np.gradient(diffs))] if len(diffs) >= 2 else 3
-            self._kcurve_cache[key] = (ks, inertia, suggested); return ks, inertia, suggested
+            self._kcurve_cache[key] = (ks, inertia, suggested)
+            return ks, inertia, suggested
 
         if c == "silhouette":
-            ks = list(range(2, 11)); scores = []; best_k, best_s = 2, -1.0
+            ks = list(range(2, 11))
+            scores = []
+            best_k, best_s = 2, -1.0
             for i, k in enumerate(ks):
-                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks)-1))
+                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks) - 1))
                 km = MiniBatchKMeans(n_clusters=k, random_state=42).fit(X)
                 lbl = km.labels_
-                try: s = silhouette_score(X, lbl, sample_size=min(5000, X.shape[0]))
-                except Exception: s = -1.0
+                try:
+                    s = silhouette_score(X, lbl, sample_size=min(5000, X.shape[0]))
+                except Exception:
+                    s = -1.0
                 scores.append(s)
-                if s > best_s: best_s, best_k = s, k
-            self._kcurve_cache[key] = (ks, scores, best_k); return ks, scores, best_k
+                if s > best_s:
+                    best_s, best_k = s, k
+            self._kcurve_cache[key] = (ks, scores, best_k)
+            return ks, scores, best_k
 
         if c == "davies_bouldin":
-            ks = list(range(2, 11)); dbs = []; best_k, best_db = 2, np.inf
+            ks = list(range(2, 11))
+            dbs = []
+            best_k, best_db = 2, np.inf
             for i, k in enumerate(ks):
-                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks)-1))
+                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks) - 1))
                 km = MiniBatchKMeans(n_clusters=k, random_state=42).fit(X)
                 lbl = km.labels_
-                try: db = davies_bouldin_score(X, lbl)
-                except Exception: db = np.inf
+                try:
+                    db = davies_bouldin_score(X, lbl)
+                except Exception:
+                    db = np.inf
                 dbs.append(db)
-                if db < best_db: best_db, best_k = db, k
-            self._kcurve_cache[key] = (ks, dbs, best_k); return ks, dbs, best_k
+                if db < best_db:
+                    best_db, best_k = db, k
+            self._kcurve_cache[key] = (ks, dbs, best_k)
+            return ks, dbs, best_k
 
         if c == "gap":
-            ks = list(range(2, 11)); disp = []
+            ks = list(range(2, 11))
+            disp = []
             for i, k in enumerate(ks):
-                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks)-1))
+                self._update_progress_fraction(0.20 + 0.50 * i / max(1, len(ks) - 1))
                 km = MiniBatchKMeans(n_clusters=k, random_state=42).fit(X)
                 disp.append(km.inertia_)
             gaps = -np.gradient(np.log(disp))
@@ -744,44 +878,65 @@ class PhaseMappingStep(QWidget):
             suggs = []
             for m in base:
                 _, _, s = self._compute_k_curve(feat, m, method)
-                if s is not None: suggs.append(int(s))
+                if s is not None:
+                    suggs.append(int(s))
             ks = list(range(2, 11))
             if not suggs:
-                self._kcurve_cache[key] = (ks, [0]*len(ks), 5); return ks, [0]*len(ks), 5
+                self._kcurve_cache[key] = (ks, [0] * len(ks), 5)
+                return ks, [0] * len(ks), 5
             votes = [suggs.count(k) for k in ks]
             suggested = ks[int(np.argmax(votes))] if max(votes) > 1 else int(np.median(suggs))
-            self._kcurve_cache[key] = (ks, votes, suggested); return ks, votes, suggested
+            self._kcurve_cache[key] = (ks, votes, suggested)
+            return ks, votes, suggested
 
-        return [2,3,4,5,6,7,8], [np.nan]*7, 5
+        return [2, 3, 4, 5, 6, 7, 8], [np.nan] * 7, 5
 
     def _refresh_kpanel_curve(self):
         if self._feat_for_cluster is None or not self.kpanel.isVisible():
             return
         method = self.phase_method.currentText().lower()
-        if method not in ("kmeans", "gmm", "fcm", "nmf_kmeans", "isodata", "spectral", "hierarchical", "som"):
+        if method not in (
+            "kmeans",
+            "gmm",
+            "fcm",
+            "nmf_kmeans",
+            "isodata",
+            "spectral",
+            "hierarchical",
+            "som",
+        ):
             return
         crit = self.k_criterion.currentText()
         ks, vals, suggested = self._compute_k_curve(self._feat_for_cluster, crit, method)
         self.kplot_ax.clear()
-        self.kplot_ax.plot(ks, vals, marker='o')
-        self.kplot_ax.set_xlabel('k')
-        ylabel = {'elbow':'Inertia (lower better)','silhouette':'Silhouette (higher better)',
-                  'davies_bouldin':'Davies-Bouldin (lower better)','gap':'Gap (higher better)',
-                  'bic_aic':'BIC (lower better)','consensus':'Votes (higher better)'}\
-                  .get(crit.lower(), crit)
+        self.kplot_ax.plot(ks, vals, marker="o")
+        self.kplot_ax.set_xlabel("k")
+        ylabel = {
+            "elbow": "Inertia (lower better)",
+            "silhouette": "Silhouette (higher better)",
+            "davies_bouldin": "Davies-Bouldin (lower better)",
+            "gap": "Gap (higher better)",
+            "bic_aic": "BIC (lower better)",
+            "consensus": "Votes (higher better)",
+        }.get(crit.lower(), crit)
         self.kplot_ax.set_ylabel(ylabel)
         self.kplot_ax.grid(True, alpha=0.3)
         if suggested is not None:
-            self.kplot_ax.axvline(suggested, linestyle='--', alpha=0.6)
+            self.kplot_ax.axvline(suggested, linestyle="--", alpha=0.6)
         self.kplot_canvas.draw_idle()
         if self.auto_cluster.isChecked() and suggested is not None:
-            self.k_spin.blockSignals(True); self.k_spin.setValue(int(suggested)); self.k_spin.blockSignals(False)
+            self.k_spin.blockSignals(True)
+            self.k_spin.setValue(int(suggested))
+            self.k_spin.blockSignals(False)
 
     # ---------- Processing pipeline ----------
     def _on_run(self):
         if not self.data_list:
-            _nice_error("No data loaded.", self); return
-        self.progress.show(); self.progress.setValue(0); self.btn_run.setEnabled(False)
+            _nice_error("No data loaded.", self)
+            return
+        self.progress.show()
+        self.progress.setValue(0)
+        self.btn_run.setEnabled(False)
         self.btn_manual.setEnabled(False)
 
         self._thr = QThread(self)
@@ -800,26 +955,43 @@ class PhaseMappingStep(QWidget):
                 self._cmap = _make_consistent_cmap(n_phases, base_name="tab20")
                 self._display_results(phase_map)
                 method = self.phase_method.currentText().lower()
-                if method in ("kmeans","gmm","fcm","nmf_kmeans","isodata","spectral","hierarchical","som"):
+                if method in (
+                    "kmeans",
+                    "gmm",
+                    "fcm",
+                    "nmf_kmeans",
+                    "isodata",
+                    "spectral",
+                    "hierarchical",
+                    "som",
+                ):
                     self.kpanel.show()
                     if extras.get("k", None) is not None:
-                        self.k_spin.blockSignals(True); self.k_spin.setValue(int(extras["k"])); self.k_spin.blockSignals(False)
+                        self.k_spin.blockSignals(True)
+                        self.k_spin.setValue(int(extras["k"]))
+                        self.k_spin.blockSignals(False)
                     self._refresh_kpanel_curve()
                 self.progress.setValue(100)
                 QMessageBox.information(self, "Done", "Phase mapping completed.")
                 self.btn_manual.setEnabled(True)
             finally:
-                self.progress.hide(); self.btn_run.setEnabled(True)
-                self._thr.quit(); self._thr.wait()
-                self._worker.deleteLater(); self._thr.deleteLater()
+                self.progress.hide()
+                self.btn_run.setEnabled(True)
+                self._thr.quit()
+                self._thr.wait()
+                self._worker.deleteLater()
+                self._thr.deleteLater()
 
         def _on_error(msg):
             try:
-                _nice_error("Phase mapping failed: {}".format(msg), self)
+                _nice_error(f"Phase mapping failed: {msg}", self)
             finally:
-                self.progress.hide(); self.btn_run.setEnabled(True)
-                self._thr.quit(); self._thr.wait()
-                self._worker.deleteLater(); self._thr.deleteLater()
+                self.progress.hide()
+                self.btn_run.setEnabled(True)
+                self._thr.quit()
+                self._thr.wait()
+                self._worker.deleteLater()
+                self._thr.deleteLater()
 
         self._worker.done.connect(_on_done)
         self._worker.error.connect(_on_error)
@@ -845,11 +1017,21 @@ class PhaseMappingStep(QWidget):
         elif method == "gmm_diag":
             n_fit = min(N, 200_000)
             idx = rng.choice(N, size=n_fit, replace=False) if N > n_fit else np.arange(N)
-            g = GaussianMixture(n_components=int(k), covariance_type="diag", reg_covar=1e-6, max_iter=200, random_state=42)
+            g = GaussianMixture(
+                n_components=int(k),
+                covariance_type="diag",
+                reg_covar=1e-6,
+                max_iter=200,
+                random_state=42,
+            )
             g.fit(feat[idx])
-            labels = np.empty(N, dtype=np.int32); bs = 100_000; s = 0
+            labels = np.empty(N, dtype=np.int32)
+            bs = 100_000
+            s = 0
             while s < N:
-                e = min(s + bs, N); labels[s:e] = g.predict(feat[s:e]); s = e
+                e = min(s + bs, N)
+                labels[s:e] = g.predict(feat[s:e])
+                s = e
 
         elif method == "fcm":
             if not _HAS_SKFUZZY:
@@ -875,7 +1057,12 @@ class PhaseMappingStep(QWidget):
             idx = rng.choice(N, size=n_samp, replace=False)
             sub = feat[idx]
             k_use = int(k) if k else 6
-            sc = SpectralClustering(n_clusters=k_use, random_state=42, n_init=10, affinity='nearest_neighbors')
+            sc = SpectralClustering(
+                n_clusters=k_use,
+                random_state=42,
+                n_init=10,
+                affinity="nearest_neighbors",
+            )
             sub_lbl = sc.fit_predict(sub)
             cents = np.vstack([sub[sub_lbl == j].mean(axis=0) for j in range(k_use)])
             labels = _assign_by_centers(feat, cents)
@@ -885,7 +1072,12 @@ class PhaseMappingStep(QWidget):
             n_fit = min(100_000, N)
             idx_fit = rng.choice(N, size=n_fit, replace=False) if N > n_fit else np.arange(N)
             X_fit = X[idx_fit]
-            br = Birch(n_clusters=None, threshold=1.0, branching_factor=200, compute_labels=False)
+            br = Birch(
+                n_clusters=None,
+                threshold=1.0,
+                branching_factor=200,
+                compute_labels=False,
+            )
             br.fit(X_fit)
             subc = br.subcluster_centers_.astype(np.float32, copy=False)
             if subc.shape[0] == 0:
@@ -893,16 +1085,28 @@ class PhaseMappingStep(QWidget):
             else:
                 k_final = int(k) if (k is not None) else max(2, min(8, subc.shape[0]))
                 try:
-                    mbk = MiniBatchKMeans(n_clusters=k_final, batch_size=4096, random_state=42, n_init="auto")
+                    mbk = MiniBatchKMeans(
+                        n_clusters=k_final,
+                        batch_size=4096,
+                        random_state=42,
+                        n_init="auto",
+                    )
                 except TypeError:
-                    mbk = MiniBatchKMeans(n_clusters=k_final, batch_size=4096, random_state=42, n_init=10)
-                mbk.fit(subc); cents = mbk.cluster_centers_.astype(np.float32, copy=False)
+                    mbk = MiniBatchKMeans(
+                        n_clusters=k_final,
+                        batch_size=4096,
+                        random_state=42,
+                        n_init=10,
+                    )
+                mbk.fit(subc)
+                cents = mbk.cluster_centers_.astype(np.float32, copy=False)
             labels = _assign_by_centers(X, cents, batch=100_000)
 
         elif method == "optics":
             op = OPTICS(min_samples=50, xi=0.05, min_cluster_size=0.02, n_jobs=-1)
             lbl = op.fit_predict(feat)
-            uniq = np.unique(lbl); mapping = {u: i for i, u in enumerate(uniq)}
+            uniq = np.unique(lbl)
+            mapping = {u: i for i, u in enumerate(uniq)}
             labels = np.vectorize(mapping.get)(lbl)
 
         elif method == "affinity_propagation":
@@ -912,8 +1116,11 @@ class PhaseMappingStep(QWidget):
             af = AffinityPropagation(random_state=42)
             lbl_sub = af.fit_predict(sub)
             uniq = np.unique(lbl_sub)
-            cents = (np.mean(sub, axis=0, keepdims=True) if len(uniq) == 0
-                     else np.vstack([sub[lbl_sub == j].mean(axis=0) for j in uniq]))
+            cents = (
+                np.mean(sub, axis=0, keepdims=True)
+                if len(uniq) == 0
+                else np.vstack([sub[lbl_sub == j].mean(axis=0) for j in uniq])
+            )
             labels = _assign_by_centers(feat, cents)
 
         elif method == "meanshift":
@@ -942,8 +1149,9 @@ class PhaseMappingStep(QWidget):
                     db = DBSCAN(eps=float(eps), min_samples=5)
                 lbl_sub = db.fit_predict(sub)
                 ncl = int(len(np.unique(lbl_sub[lbl_sub >= 0])))
-                if ncl == 0: continue
-                score = abs(ncl - k_target) if k_target is not None else abs(ncl - (len(eps_grid)//2 + 1))
+                if ncl == 0:
+                    continue
+                score = abs(ncl - k_target) if k_target is not None else abs(ncl - (len(eps_grid) // 2 + 1))
                 if (best is None) or (score < best[0]):
                     best = (score, eps, lbl_sub, ncl)
             if best is None:
@@ -961,10 +1169,17 @@ class PhaseMappingStep(QWidget):
             idx = rng.choice(N, size=n_samp, replace=False) if N > n_samp else np.arange(N)
             sub = feat[idx]
             min_cluster_size = max(10, n_samp // 500)
-            clusterer = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=5, core_dist_n_jobs=-1)
+            clusterer = hdbscan.HDBSCAN(
+                min_cluster_size=min_cluster_size,
+                min_samples=5,
+                core_dist_n_jobs=-1,
+            )
             lbl_sub = clusterer.fit_predict(sub)
-            cents = (np.mean(sub, axis=0, keepdims=True) if not np.any(lbl_sub >= 0)
-                     else np.vstack([sub[lbl_sub == j].mean(axis=0) for j in np.unique(lbl_sub) if j >= 0]))
+            cents = (
+                np.mean(sub, axis=0, keepdims=True)
+                if not np.any(lbl_sub >= 0)
+                else np.vstack([sub[lbl_sub == j].mean(axis=0) for j in np.unique(lbl_sub) if j >= 0])
+            )
             labels = _assign_by_centers(feat, cents)
 
         elif method == "isodata":
@@ -980,25 +1195,39 @@ class PhaseMappingStep(QWidget):
                 raise RuntimeError("MiniSom not installed; install with `pip install minisom`.")
             k_use = int(k) if k else 6
             side = max(2, int(np.sqrt(k_use)))
-            som = MiniSom(side, side, feat.shape[1], sigma=1.0, learning_rate=0.5, random_seed=42)
+            som = MiniSom(
+                side,
+                side,
+                feat.shape[1],
+                sigma=1.0,
+                learning_rate=0.5,
+                random_seed=42,
+            )
             n_samp = min(50_000, N)
             idx = rng.choice(N, size=n_samp, replace=False)
-            som.random_weights_init(feat[idx]); som.train_random(feat[idx], num_iteration=500)
+            som.random_weights_init(feat[idx])
+            som.train_random(feat[idx], num_iteration=500)
             bmus = [som.winner(x) for x in feat]
-            labels = np.array([i*side + j for (i, j) in bmus], dtype=int)
+            labels = np.array([i * side + j for (i, j) in bmus], dtype=int)
 
         elif method == "nmf_kmeans":
             k_use = int(k) if k else 6
             X = feat.copy()
             minv = X.min()
-            if minv < 0: X = X - minv + 1e-9
-            nmf = NMF(n_components=k_use, init='nndsvda', max_iter=300, random_state=42)
+            if minv < 0:
+                X = X - minv + 1e-9
+            nmf = NMF(
+                n_components=k_use,
+                init="nndsvda",
+                max_iter=300,
+                random_state=42,
+            )
             W = nmf.fit_transform(X)
             algo = MiniBatchKMeans(n_clusters=k_use, random_state=42)
             labels = algo.fit_predict(W)
 
         else:
-            raise ValueError("Unknown method: {}".format(method))
+            raise ValueError(f"Unknown method: {method}")
 
         self._update_progress_fraction(0.90)
         return labels
@@ -1023,7 +1252,7 @@ class PhaseMappingStep(QWidget):
             ax2 = self.figure.add_subplot(gs[1])
 
             view, _s = _preview_img(phase_map)
-            im = ax1.imshow(view, cmap=self._cmap, vmin=0, vmax=n-1)
+            im = ax1.imshow(view, cmap=self._cmap, vmin=0, vmax=n - 1)
             ax1.set_title("Phase Map", fontsize=12, fontweight="bold")
             ax1.axis("off")
             div = make_axes_locatable(ax1)
@@ -1035,52 +1264,73 @@ class PhaseMappingStep(QWidget):
             labels_txt = [f"P{i+1}" for i in range(n)]
             colors = [self._cmap(i) for i in range(n)]
             wedges, texts, autotexts = ax2.pie(
-                pct, labels=labels_txt, autopct="%1.1f%%", startangle=90, colors=colors
+                pct,
+                labels=labels_txt,
+                autopct="%1.1f%%",
+                startangle=90,
+                colors=colors,
             )
             ax2.set_title("Phase Distribution", fontsize=11, fontweight="bold")
 
             if _HAS_MPLCURSORS:
                 cursor = mplcursors.cursor(wedges, hover=True)
+
                 @cursor.connect("add")
                 def on_add(sel):
                     i = wedges.index(sel.artist)
                     sel.annotation.set_text(f"{labels_txt[i]}: {pct[i]:.2f}% ({counts[i]})")
+
             else:
                 for w in wedges:
                     w.set_picker(True)
+
                 def on_pick(event):
                     w = event.artist
                     i = wedges.index(w)
                     self._log(f"Clicked {labels_txt[i]}: {pct[i]:.2f}% ({counts[i]})")
                     w.set_alpha(0.6 if w.get_alpha() in (None, 1.0) else 1.0)
                     self.canvas.draw_idle()
+
                 self.canvas.mpl_connect("pick_event", on_pick)
 
             self.canvas.draw()
 
             # Save full-resolution images/text
             out_phase = self._wd("Phase.tiff")
-            out_pie   = self._wd("PieChart.tiff")
+            out_pie = self._wd("PieChart.tiff")
             fig1, ax = plt.subplots(figsize=(6, 5))
-            ax.imshow(phase_map, cmap=self._cmap, vmin=0, vmax=n-1)
+            ax.imshow(phase_map, cmap=self._cmap, vmin=0, vmax=n - 1)
             ax.axis("off")
             fig1.savefig(out_phase, dpi=300, bbox_inches="tight", pad_inches=0)
             plt.close(fig1)
 
             fig2, ax = plt.subplots(figsize=(5, 5))
-            ax.pie(pct, labels=labels_txt, autopct="%1.1f%%", startangle=90, colors=colors)
+            ax.pie(
+                pct,
+                labels=labels_txt,
+                autopct="%1.1f%%",
+                startangle=90,
+                colors=colors,
+            )
             ax.set_title("Phase Distribution")
-            fig2.savefig(out_pie,  dpi=300, bbox_inches="tight")
+            fig2.savefig(out_pie, dpi=300, bbox_inches="tight")
             plt.close(fig2)
 
             self._log(f"Saved {out_phase} and {out_pie}")
             try:
-                np.savetxt(self._wd("PhaseMap.txt"), phase_map.astype(np.int32), fmt="%d", delimiter="\t")
-                stats_df = pd.DataFrame({
-                    "phase_id": np.arange(1, n+1, dtype=int),
-                    "pixels": counts.astype(int),
-                    "percent": pct
-                })
+                np.savetxt(
+                    self._wd("PhaseMap.txt"),
+                    phase_map.astype(np.int32),
+                    fmt="%d",
+                    delimiter="\t",
+                )
+                stats_df = pd.DataFrame(
+                    {
+                        "phase_id": np.arange(1, n + 1, dtype=int),
+                        "pixels": counts.astype(int),
+                        "percent": pct,
+                    }
+                )
                 stats_df.to_csv(self._wd("PhaseStats.txt"), sep="\t", index=False)
                 self._log("Saved PhaseMap.txt and PhaseStats.txt")
             except Exception as e:
@@ -1096,7 +1346,10 @@ class PhaseMappingStep(QWidget):
         try:
             tiff_filename = self._wd("Phase.tiff")
             if not os.path.isfile(tiff_filename):
-                _nice_error(f"Expected {tiff_filename} not found. Run phase mapping first.", self)
+                _nice_error(
+                    f"Expected {tiff_filename} not found. Run phase mapping first.",
+                    self,
+                )
                 return
             hdf5_filename = self.data_path
             with h5py.File(hdf5_filename, "r") as f:
@@ -1109,6 +1362,7 @@ class PhaseMappingStep(QWidget):
                 expected_shape = xmaps[first_name]["data"].shape  # (H, W)
 
             from PIL import Image
+
             img = Image.open(tiff_filename).convert("RGB")
             arr = np.array(img)
             if arr.shape[:2] != expected_shape:
@@ -1124,7 +1378,11 @@ class PhaseMappingStep(QWidget):
                 images.create_dataset("Phase_Map.tiff", data=arr)
 
             self._log(f"Results saved to {hdf5_filename} under /Images/Phase_Map.tiff")
-            QMessageBox.information(self, "Saved", "Saved phase map TIFF to HDF5 (/Images/Phase_Map.tiff).")
+            QMessageBox.information(
+                self,
+                "Saved",
+                "Saved phase map TIFF to HDF5 (/Images/Phase_Map.tiff).",
+            )
         except Exception as e:
             _nice_error(f"Failed to save results to HDF5: {e}", self)
 
@@ -1134,12 +1392,21 @@ class PhaseMappingStep(QWidget):
             if self._feat_for_cluster is None:
                 return
             method = self.phase_method.currentText().lower()
-            if method not in ("kmeans", "gmm", "fcm", "nmf_kmeans", "isodata", "spectral", "hierarchical", "som"):
+            if method not in (
+                "kmeans",
+                "gmm",
+                "fcm",
+                "nmf_kmeans",
+                "isodata",
+                "spectral",
+                "hierarchical",
+                "som",
+            ):
                 return
             if not self.auto_cluster.isChecked():
                 self._log(f"Selected k={value}. Click 'Recluster' to apply.")
                 try:
-                    self.kplot_ax.axvline(int(value), linestyle=':', alpha=0.4)
+                    self.kplot_ax.axvline(int(value), linestyle=":", alpha=0.4)
                     self.kplot_canvas.draw_idle()
                 except Exception:
                     pass
@@ -1155,10 +1422,21 @@ class PhaseMappingStep(QWidget):
     def _on_recluster_clicked(self):
         try:
             if self._feat_for_cluster is None:
-                _nice_error("Run phase mapping first, then choose k.", self); return
+                _nice_error("Run phase mapping first, then choose k.", self)
+                return
             method = self.phase_method.currentText().lower()
-            if method not in ("kmeans", "gmm", "fcm", "nmf_kmeans", "isodata", "spectral", "hierarchical", "som"):
-                _nice_error(f"'{method}' does not use k.", self); return
+            if method not in (
+                "kmeans",
+                "gmm",
+                "fcm",
+                "nmf_kmeans",
+                "isodata",
+                "spectral",
+                "hierarchical",
+                "som",
+            ):
+                _nice_error(f"'{method}' does not use k.", self)
+                return
             k = int(self.k_spin.value())
             H, W = self.results.shape if self.results is not None else (None, None)
             self._start_recluster_thread(method, k, H, W)
@@ -1167,8 +1445,11 @@ class PhaseMappingStep(QWidget):
 
     def _start_recluster_thread(self, method, k, H, W):
         # Show progress bar during recluster (non-blocking)
-        self.progress.show(); self.progress.setValue(0)
-        self.btn_run.setEnabled(False); self.btn_recluster.setEnabled(False); self.btn_manual.setEnabled(False)
+        self.progress.show()
+        self.progress.setValue(0)
+        self.btn_run.setEnabled(False)
+        self.btn_recluster.setEnabled(False)
+        self.btn_manual.setEnabled(False)
 
         self._thr_r = QThread(self)
         self._worker_r = _ReclusterWorker(self, method, k, H, W)
@@ -1184,17 +1465,27 @@ class PhaseMappingStep(QWidget):
                 self.results = labels.reshape(self.results.shape)
                 self._display_results(self.results)
             finally:
-                self.progress.hide(); self.btn_run.setEnabled(True); self.btn_recluster.setEnabled(True); self.btn_manual.setEnabled(True)
-                self._thr_r.quit(); self._thr_r.wait()
-                self._worker_r.deleteLater(); self._thr_r.deleteLater()
+                self.progress.hide()
+                self.btn_run.setEnabled(True)
+                self.btn_recluster.setEnabled(True)
+                self.btn_manual.setEnabled(True)
+                self._thr_r.quit()
+                self._thr_r.wait()
+                self._worker_r.deleteLater()
+                self._thr_r.deleteLater()
 
         def _on_error(msg):
             try:
-                _nice_error("Recluster failed: {}".format(msg), self)
+                _nice_error(f"Recluster failed: {msg}", self)
             finally:
-                self.progress.hide(); self.btn_run.setEnabled(True); self.btn_recluster.setEnabled(True); self.btn_manual.setEnabled(True)
-                self._thr_r.quit(); self._thr_r.wait()
-                self._worker_r.deleteLater(); self._thr_r.deleteLater()
+                self.progress.hide()
+                self.btn_run.setEnabled(True)
+                self.btn_recluster.setEnabled(True)
+                self.btn_manual.setEnabled(True)
+                self._thr_r.quit()
+                self._thr_r.wait()
+                self._worker_r.deleteLater()
+                self._thr_r.deleteLater()
 
         self._worker_r.done.connect(_on_done)
         self._worker_r.error.connect(_on_error)
@@ -1203,8 +1494,15 @@ class PhaseMappingStep(QWidget):
     # ---------- Manual editor (new window) ----------
     def _open_manual_editor(self):
         if self.results is None or self._feat_for_cluster is None:
-            _nice_error("Run phase mapping first.", self); return
-        dlg = ManualEditor(self, self.results.copy(), self._cmap, self._feat_for_cluster, self._labels)
+            _nice_error("Run phase mapping first.", self)
+            return
+        dlg = ManualEditor(
+            self,
+            self.results.copy(),
+            self._cmap,
+            self._feat_for_cluster,
+            self._labels,
+        )
         dlg.exec_()
 
     # ---------- Progress helper ----------
@@ -1218,29 +1516,42 @@ class PhaseMappingStep(QWidget):
         if getattr(self, "_splitters_initialized", False):
             return
         try:
-            self.splitter_main.setCollapsible(0, False); self.splitter_main.setCollapsible(1, False)
-            self.splitter_left.setCollapsible(0, False); self.splitter_left.setCollapsible(1, False)
+            self.splitter_main.setCollapsible(0, False)
+            self.splitter_main.setCollapsible(1, False)
+            self.splitter_left.setCollapsible(0, False)
+            self.splitter_left.setCollapsible(1, False)
         except Exception:
             pass
-        left_width = 350; total_w = max(self.width(), 1000)
+        left_width = 350
+        total_w = max(self.width(), 1000)
         self.splitter_main.setSizes([left_width, max(600, total_w - left_width)])
         self.splitter_main.moveSplitter(left_width, 1)
-        total_h = max(self.height(), 800); logs_h = int(total_h * 0.60)
+        total_h = max(self.height(), 800)
+        logs_h = int(total_h * 0.60)
         self.splitter_left.setSizes([logs_h, max(240, total_h - logs_h)])
         self.splitter_main.widget(0).setMinimumWidth(300)
         self.splitter_left.widget(0).setMinimumHeight(220)
         self.splitter_left.widget(1).setMinimumHeight(180)
         self._splitters_initialized = True
 
+
 # ---- Manual Editor Dialog ----
 class ManualEditor(QDialog):
+    """Manual clustering on a *multidimensional* view.
+
+    Shows a 2D embedding (PCA/UMAP/t-SNE) of feature space so the user
+    can draw an outer polygon (lasso/ellipse) around clusters;
+    assignment updates the full map.
     """
-    Manual clustering on a *multidimensional* view.
-    Shows a 2D embedding (PCA/UMAP/t-SNE) of feature space so the user can draw an
-    outer polygon (lasso/ellipse) around clusters; assignment updates the full map.
-    """
-    def __init__(self, owner: PhaseMappingStep, phase_map: np.ndarray, cmap: ListedColormap,
-                 feat: np.ndarray, labels1d: np.ndarray):
+
+    def __init__(
+        self,
+        owner: PhaseMappingStep,
+        phase_map: np.ndarray,
+        cmap: ListedColormap,
+        feat: np.ndarray,
+        labels1d: np.ndarray,
+    ):
         super().__init__(owner)
         self.owner = owner
         self.map = phase_map  # live reference to full-res labels (H,W)
@@ -1255,9 +1566,9 @@ class ManualEditor(QDialog):
 
         # State for embedding & selection
         self.sample_idx = None
-        self.embed = None           # (Ns, 2)
-        self._proj_kind = 'PCA'
-        self._last_path = None      # matplotlib.path.Path of last polygon selection
+        self.embed = None  # (Ns, 2)
+        self._proj_kind = "PCA"
+        self._last_path = None  # matplotlib.path.Path of last polygon selection
         self._selector = None
 
         # UI layout
@@ -1268,37 +1579,52 @@ class ManualEditor(QDialog):
         ctrl.addWidget(QLabel("Projection:", self))
         self.proj_choice = QComboBox(self)
         proj_opts = ["PCA"]
-        if _HAS_UMAP: proj_opts.append("UMAP")
-        if _HAS_TSNE: proj_opts.append("t-SNE")
+        if _HAS_UMAP:
+            proj_opts.append("UMAP")
+        if _HAS_TSNE:
+            proj_opts.append("t-SNE")
         self.proj_choice.addItems(proj_opts)
         ctrl.addWidget(self.proj_choice)
 
         ctrl.addWidget(QLabel("Sample size:", self))
-        self.sample_spin = QSpinBox(self); self.sample_spin.setRange(1000, 500000); self.sample_spin.setSingleStep(5000); self.sample_spin.setValue(min(100000, max(5000, self.N//20)))
+        self.sample_spin = QSpinBox(self)
+        self.sample_spin.setRange(1000, 500000)
+        self.sample_spin.setSingleStep(5000)
+        self.sample_spin.setValue(min(100000, max(5000, self.N // 20)))
         ctrl.addWidget(self.sample_spin)
-        self.btn_compute = QPushButton("Compute / Refresh", self); self.btn_compute.clicked.connect(self._compute_embedding)
+        self.btn_compute = QPushButton("Compute / Refresh", self)
+        self.btn_compute.clicked.connect(self._compute_embedding)
         ctrl.addWidget(self.btn_compute)
 
         ctrl.addSpacing(12)
         ctrl.addWidget(QLabel("Shape:", self))
-        self.shape_choice = QComboBox(self); self.shape_choice.addItems(["Lasso", "Ellipse"])  # polygon tools on scatter
+        self.shape_choice = QComboBox(self)
+        # polygon tools on scatter
+        self.shape_choice.addItems(["Lasso", "Ellipse"])
         ctrl.addWidget(self.shape_choice)
 
         ctrl.addSpacing(12)
         ctrl.addWidget(QLabel("Assign to phase:", self))
-        self.phase_spin = QSpinBox(self); self.phase_spin.setRange(1, 1024); self.phase_spin.setValue(int(np.max(self.map)) + 1)
+        self.phase_spin = QSpinBox(self)
+        self.phase_spin.setRange(1, 1024)
+        self.phase_spin.setValue(int(np.max(self.map)) + 1)
         ctrl.addWidget(self.phase_spin)
-        self.btn_new_phase = QPushButton("New Phase", self); self.btn_new_phase.clicked.connect(lambda: self.phase_spin.setValue(int(np.max(self.map)) + 2))
+        self.btn_new_phase = QPushButton("New Phase", self)
+        self.btn_new_phase.clicked.connect(lambda: self.phase_spin.setValue(int(np.max(self.map)) + 2))
         ctrl.addWidget(self.btn_new_phase)
 
-        self.chk_full = QCheckBox("Apply to full map (accurate)", self); self.chk_full.setChecked(True)
+        self.chk_full = QCheckBox("Apply to full map (accurate)", self)
+        self.chk_full.setChecked(True)
         ctrl.addWidget(self.chk_full)
 
-        self.btn_assign = QPushButton("Assign Selection", self); self.btn_assign.clicked.connect(self._assign_selection)
+        self.btn_assign = QPushButton("Assign Selection", self)
+        self.btn_assign.clicked.connect(self._assign_selection)
         ctrl.addWidget(self.btn_assign)
-        self.btn_clear = QPushButton("Clear Selection", self); self.btn_clear.clicked.connect(self._clear_selection)
+        self.btn_clear = QPushButton("Clear Selection", self)
+        self.btn_clear.clicked.connect(self._clear_selection)
         ctrl.addWidget(self.btn_clear)
-        self.btn_reset = QPushButton("Reset Map", self); self.btn_reset.clicked.connect(self._reset_map)
+        self.btn_reset = QPushButton("Reset Map", self)
+        self.btn_reset.clicked.connect(self._reset_map)
         ctrl.addWidget(self.btn_reset)
         ctrl.addStretch(1)
 
@@ -1306,22 +1632,28 @@ class ManualEditor(QDialog):
 
         # Figures: left scatter (embedding), right live preview map
         figs = QHBoxLayout()
-        self.fig_sc = Figure(figsize=(6, 5)); self.canvas_sc = FigureCanvas(self.fig_sc)
+        self.fig_sc = Figure(figsize=(6, 5))
+        self.canvas_sc = FigureCanvas(self.fig_sc)
         self.ax_sc = self.fig_sc.add_subplot(111)
         figs.addWidget(self.canvas_sc, stretch=3)
 
-        self.fig_map = Figure(figsize=(5, 5)); self.canvas_map = FigureCanvas(self.fig_map)
+        self.fig_map = Figure(figsize=(5, 5))
+        self.canvas_map = FigureCanvas(self.fig_map)
         self.ax_map = self.fig_map.add_subplot(111)
         view, _ = _preview_img(self.map)
-        im = self.ax_map.imshow(view, cmap=self.cmap, vmin=0, vmax=int(np.max(self.map)))
-        self.ax_map.set_title("Live Phase Map Preview", fontsize=11, fontweight='bold'); self.ax_map.axis('off')
+        _ = self.ax_map.imshow(view, cmap=self.cmap, vmin=0, vmax=int(np.max(self.map)))
+        self.ax_map.set_title("Live Phase Map Preview", fontsize=11, fontweight="bold")
+        self.ax_map.axis("off")
         figs.addWidget(self.canvas_map, stretch=2)
         v.addLayout(figs)
 
         # Bottom: progress + close
-        self.prog = QProgressBar(self); self.prog.setRange(0, 100); self.prog.hide()
+        self.prog = QProgressBar(self)
+        self.prog.setRange(0, 100)
+        self.prog.hide()
         v.addWidget(self.prog)
-        bb = QDialogButtonBox(QDialogButtonBox.Close, parent=self); bb.rejected.connect(self.reject)
+        bb = QDialogButtonBox(QDialogButtonBox.Close, parent=self)
+        bb.rejected.connect(self.reject)
         v.addWidget(bb)
 
         # Initial embedding
@@ -1332,7 +1664,8 @@ class ManualEditor(QDialog):
         # Clear any prior selector
         self._disconnect_selector()
         self._last_path = None
-        self.prog.show(); self.prog.setValue(0)
+        self.prog.show()
+        self.prog.setValue(0)
         QApplication.processEvents()
 
         rng = check_random_state(42)
@@ -1348,29 +1681,55 @@ class ManualEditor(QDialog):
         self._proj_kind = kind
 
         try:
-            if kind == 'PCA':
-                self._pca2 = PCA(n_components=2, svd_solver='randomized', random_state=42).fit(Xs)
+            if kind == "PCA":
+                self._pca2 = PCA(n_components=2, svd_solver="randomized", random_state=42).fit(Xs)
                 self.embed = self._pca2.transform(Xs)
-            elif kind == 'UMAP' and _HAS_UMAP:
-                self._umap = umap.UMAP(n_components=2, random_state=42, n_neighbors=30, min_dist=0.05)
+            elif kind == "UMAP" and _HAS_UMAP:
+                self._umap = umap.UMAP(
+                    n_components=2,
+                    random_state=42,
+                    n_neighbors=30,
+                    min_dist=0.05,
+                )
                 self.embed = self._umap.fit_transform(Xs)
-            elif kind == 't-SNE' and _HAS_TSNE:
-                self.embed = TSNE(n_components=2, init='pca', random_state=42, learning_rate='auto', perplexity=30).fit_transform(Xs)
+            elif kind == "t-SNE" and _HAS_TSNE:
+                self.embed = TSNE(
+                    n_components=2,
+                    init="pca",
+                    random_state=42,
+                    learning_rate="auto",
+                    perplexity=30,
+                ).fit_transform(Xs)
             else:  # fallback
-                self._pca2 = PCA(n_components=2, svd_solver='randomized', random_state=42).fit(Xs)
+                self._pca2 = PCA(n_components=2, svd_solver="randomized", random_state=42).fit(Xs)
                 self.embed = self._pca2.transform(Xs)
-                self._proj_kind = 'PCA'
+                self._proj_kind = "PCA"
         except Exception as e:
             _nice_error(f"Projection failed ({kind}): {e}", self)
-            self.prog.hide(); return
+            self.prog.hide()
+            return
 
-        self.prog.setValue(60); QApplication.processEvents()
+        self.prog.setValue(60)
+        QApplication.processEvents()
 
         # Plot scatter colored by current phase labels
         self.ax_sc.clear()
-        sc = self.ax_sc.scatter(self.embed[:,0], self.embed[:,1], c=labs, s=2, cmap=self.cmap, vmin=0, vmax=int(np.max(self.map)))
-        self.ax_sc.set_title(f"{self._proj_kind} of features (N={len(self.sample_idx):,})", fontsize=11, fontweight='bold')
-        self.ax_sc.set_xlabel('Dim 1'); self.ax_sc.set_ylabel('Dim 2')
+        sc = self.ax_sc.scatter(
+            self.embed[:, 0],
+            self.embed[:, 1],
+            c=labs,
+            s=2,
+            cmap=self.cmap,
+            vmin=0,
+            vmax=int(np.max(self.map)),
+        )
+        self.ax_sc.set_title(
+            f"{self._proj_kind} of features (N={len(self.sample_idx):,})",
+            fontsize=11,
+            fontweight="bold",
+        )
+        self.ax_sc.set_xlabel("Dim 1")
+        self.ax_sc.set_ylabel("Dim 2")
         self.fig_sc.colorbar(sc, ax=self.ax_sc, fraction=0.046, pad=0.04)
         self.canvas_sc.draw()
 
@@ -1379,12 +1738,13 @@ class ManualEditor(QDialog):
 
         # Refresh map preview
         self._redraw_preview()
-        self.prog.setValue(100); self.prog.hide()
+        self.prog.setValue(100)
+        self.prog.hide()
 
     def _activate_selector(self):
         self._disconnect_selector()
         tool = self.shape_choice.currentText().lower()
-        if tool == 'lasso':
+        if tool == "lasso":
             self._selector = LassoSelector(self.ax_sc, onselect=self._on_lasso_scatter)
         else:
             self._selector = EllipseSelector(self.ax_sc, onselect=self._on_ellipse_scatter, interactive=True)
@@ -1405,10 +1765,10 @@ class ManualEditor(QDialog):
         x0, y0 = float(min(eclick.xdata, erelease.xdata)), float(min(eclick.ydata, erelease.ydata))
         x1, y1 = float(max(eclick.xdata, erelease.xdata)), float(max(eclick.ydata, erelease.ydata))
         # approximate ellipse by polygon
-        t = np.linspace(0, 2*np.pi, 200)
-        cx, cy = (x0 + x1)/2.0, (y0 + y1)/2.0
-        rx, ry = (x1 - x0)/2.0, (y1 - y0)/2.0
-        verts = np.c_[cx + rx*np.cos(t), cy + ry*np.sin(t)]
+        t = np.linspace(0, 2 * np.pi, 200)
+        cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+        rx, ry = (x1 - x0) / 2.0, (y1 - y0) / 2.0
+        verts = np.c_[cx + rx * np.cos(t), cy + ry * np.sin(t)]
         self._last_path = Path(verts)
         self._highlight_selection_on_scatter()
 
@@ -1418,21 +1778,30 @@ class ManualEditor(QDialog):
         pts = self.embed
         inside = self._last_path.contains_points(pts)
         # overlay highlight
-        self.ax_sc.collections = [c for c in self.ax_sc.collections if getattr(c, 'is_base', False)]
-        hl = self.ax_sc.scatter(pts[inside,0], pts[inside,1], s=8, facecolors='none', edgecolors='k', linewidths=0.7)
-        setattr(hl, 'is_base', False)
+        self.ax_sc.collections = [c for c in self.ax_sc.collections if getattr(c, "is_base", False)]
+        hl = self.ax_sc.scatter(
+            pts[inside, 0],
+            pts[inside, 1],
+            s=8,
+            facecolors="none",
+            edgecolors="k",
+            linewidths=0.7,
+        )
+        hl.is_base = False
         self.canvas_sc.draw_idle()
 
     # ---------------- Assignment ----------------
     def _assign_selection(self):
         if self._last_path is None or self.embed is None or self.sample_idx is None:
-            _nice_error("Draw a selection first.", self); return
+            _nice_error("Draw a selection first.", self)
+            return
         target_phase = int(self.phase_spin.value()) - 1  # 1-based to 0-based
 
         # Determine selected indices in the SAMPLE set
         inside = self._last_path.contains_points(self.embed)
         if not np.any(inside):
-            _nice_error("Selection contains no points.", self); return
+            _nice_error("Selection contains no points.", self)
+            return
         sel_sample_idx = self.sample_idx[inside]
 
         # Build full-resolution mask
@@ -1440,9 +1809,12 @@ class ManualEditor(QDialog):
         full_mask = np.zeros(self.N, dtype=bool)
 
         if apply_full:
-            self.prog.show(); self.prog.setValue(0); QApplication.processEvents()
-            if self._proj_kind == 'PCA' and hasattr(self, '_pca2'):
-                # Accurate: transform full dataset in batches, test polygon in 2D
+            self.prog.show()
+            self.prog.setValue(0)
+            QApplication.processEvents()
+            if self._proj_kind == "PCA" and hasattr(self, "_pca2"):
+                # Accurate: transform full dataset in batches, test polygon in
+                # 2D
                 bs = 400_000
                 total = self.N
                 done = 0
@@ -1452,19 +1824,24 @@ class ManualEditor(QDialog):
                     Yb = self._pca2.transform(Xb)
                     full_mask[s:e] = self._last_path.contains_points(Yb)
                     done = e
-                    self.prog.setValue(int(100 * done / total)); QApplication.processEvents()
+                    self.prog.setValue(int(100 * done / total))
+                    QApplication.processEvents()
             else:
                 # Fallback: nearest-neighbor propagate from selected SAMPLE points in ORIGINAL FEATURE SPACE
-                # Points whose nearest sample neighbor is selected will be assigned.
-                self.prog.setValue(5); QApplication.processEvents()
+                # Points whose nearest sample neighbor is selected will be
+                # assigned.
+                self.prog.setValue(5)
+                QApplication.processEvents()
                 from sklearn.neighbors import NearestNeighbors
+
                 Xs = self.feat[self.sample_idx]
                 sel_flags = np.zeros(len(self.sample_idx), dtype=bool)
                 # map sample_idx positions to flags
                 sel_positions = np.nonzero(inside)[0]
                 sel_flags[sel_positions] = True
                 nn = NearestNeighbors(n_neighbors=1).fit(Xs)
-                bs = 300_000; total = self.N
+                bs = 300_000
+                total = self.N
                 done = 0
                 for s in range(0, total, bs):
                     e = min(s + bs, total)
@@ -1473,7 +1850,8 @@ class ManualEditor(QDialog):
                     ind = ind.reshape(-1)
                     full_mask[s:e] = sel_flags[ind]
                     done = e
-                    self.prog.setValue(int(100 * done / total)); QApplication.processEvents()
+                    self.prog.setValue(int(100 * done / total))
+                    QApplication.processEvents()
         else:
             # Fast: affect only the sampled points
             full_mask[sel_sample_idx] = True
@@ -1503,16 +1881,24 @@ class ManualEditor(QDialog):
             return
         labs = self.map.reshape(-1)[self.sample_idx]
         self.ax_sc.collections.clear()
-        sc = self.ax_sc.scatter(self.embed[:,0], self.embed[:,1], c=labs, s=2, cmap=self.cmap, vmin=0, vmax=int(np.max(self.map)))
-        setattr(sc, 'is_base', True)
+        sc = self.ax_sc.scatter(
+            self.embed[:, 0],
+            self.embed[:, 1],
+            c=labs,
+            s=2,
+            cmap=self.cmap,
+            vmin=0,
+            vmax=int(np.max(self.map)),
+        )
+        sc.is_base = True
         self.canvas_sc.draw_idle()
 
     def _redraw_preview(self):
         self.ax_map.clear()
         view, _ = _preview_img(self.map)
         self.ax_map.imshow(view, cmap=self.cmap, vmin=0, vmax=int(np.max(self.map)))
-        self.ax_map.set_title("Live Phase Map Preview", fontsize=11, fontweight='bold')
-        self.ax_map.axis('off')
+        self.ax_map.set_title("Live Phase Map Preview", fontsize=11, fontweight="bold")
+        self.ax_map.axis("off")
         self.canvas_map.draw_idle()
 
     # ---------------- Misc ----------------
@@ -1521,10 +1907,13 @@ class ManualEditor(QDialog):
         self._recolor_scatter()
 
     def _reset_map(self):
-        # reset to owner's current map stored before editor opened? Here we revert to the map state at dialog launch
+        # reset to owner's current map stored before editor opened? Here we
+        # revert to the map state at dialog launch
         self.map[:] = self.owner.results
         self.owner._display_results(self.owner.results)
-        self._recolor_scatter(); self._redraw_preview()
+        self._recolor_scatter()
+        self._redraw_preview()
+
 
 # Entrypoint
 if __name__ == "__main__":
