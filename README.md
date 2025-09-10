@@ -2,12 +2,13 @@
 
 **MapEX** is a graphical application for performing **phase mapping** of elemental maps using secondary X-rays using advanced clustering and dimensionality reduction techniques.
 
-It supports common methods like:
-- KMeans, GMM, FCM, Hierarchical clustering
-- PCA-based dimensionality reduction
-- Density-based clustering: Mean Shift, DBSCAN, Affinity Propagation
-
-MapEX helps researchers preprocess, analyze, and visualize complex elemental data interactively.
+**Key features**
+- Unsupervised clustering: **K-Means, GMM, FCM, Hierarchical**
+- Dimensionality reduction: **PCA**
+- Density methods: **Mean Shift, DBSCAN, Affinity Propagation**
+- Interactive **correlation plots** and **ternary plots** (user-selected elements)
+- ROI tools and **report-ready exports**
+- HDF5 packaging; scalable from laptop to HPC
 
 ---
 
@@ -31,6 +32,15 @@ install required dependencies by
 ```
 pip install -r requirements.txt
 ```
+## 🚀 Quick Start (one command)
+
+Works on **Windows, macOS, and Linux**. Requires Python installed.
+
+```bash
+# Clone and install
+git clone https://github.com/divyadeepharbola/MapEX.git
+cd MapEX
+python install.py  
 
 
 Release executable soon !
