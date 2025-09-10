@@ -41,7 +41,7 @@ Works on **Windows, macOS, and Linux**. Requires Python installed.
 git clone https://github.com/divyadeepharbola/MapEX.git
 cd MapEX
 python install.py  
-
+```
 
 Release executable soon !
 
